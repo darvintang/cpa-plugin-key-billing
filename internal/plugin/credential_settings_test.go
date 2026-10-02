@@ -163,7 +163,7 @@ func TestCredentialTaskTiming(t *testing.T) {
 	}
 	var fresh credentialControls
 	if err := fresh.configure(path); err != nil || !fresh.lastRunAt.Equal(last) || !fresh.nextRunAt.IsZero() {
-		t.Fatalf("restart: %+v %v", fresh, err)
+		t.Fatalf("restart: last=%v next=%v err=%v", fresh.lastRunAt, fresh.nextRunAt, err)
 	}
 }
 

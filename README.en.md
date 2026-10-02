@@ -22,6 +22,7 @@ CPA Key Billing Plus is derived from [haowang02/cpa-plugin-key-billing](https://
 - Settings apply one concurrency ceiling per credential (`0` means unlimited), without per-file overrides.
 - One test schedule applies to enabled Codex credentials: custom minute intervals or daily wall-clock times with an explicit time zone. Set a GPT model and prompt before enabling tests. Tests consume upstream quota and report results in plugin logs.
 - Manual installers include `plugins/cpa-key-billing-plus-worker` (`.exe` on Windows). Store installations only install the library; scheduled tests additionally require the matching Release worker executable.
+- Save task settings inside the task card and view the last execution and estimated next execution times. Upgrade both the library and worker for timing status.
 - The external worker continues after the browser closes, using the current management session. Log in again after CPA restarts to resume. Task settings never persist management keys.
 - Weight autosave requires the host auth-file fields endpoint; CLIProxyAPI `7.2.154` or newer is recommended.
 

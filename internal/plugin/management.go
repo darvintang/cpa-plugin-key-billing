@@ -52,6 +52,7 @@ type managementEndpoint struct {
 }
 
 var managementEndpoints = []managementEndpoint{
+	{http.MethodPost, "/credential-task-status", "Record scheduled task timing", (*App).credentialTaskStatus},
 	{http.MethodPost, "/credential-task-session", "Resume tasks with management session", (*App).credentialSettings},
 	{http.MethodPost, "/credential-task-result", "Record scheduled test result", (*App).credentialTaskResult},
 	{http.MethodGet, "/credential-settings", "View shared credential settings", (*App).credentialSettings},

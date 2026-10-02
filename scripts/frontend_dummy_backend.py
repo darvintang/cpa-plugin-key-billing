@@ -1302,7 +1302,7 @@ def route_rows():
 
 def payload_for(path, query):
     if path == f"{API_BASE}/credential-settings":
-        return {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"]}
+        return {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"], "last_run_at": "2026-10-02T12:00:00Z", "next_run_at": "2026-10-03T01:00:00Z" if CREDENTIAL_SETTINGS["enabled"] else None}
     if path == "/v0/management/auth-files":
         return {"files": [{**file, "weight": AUTH_WEIGHTS.get(file["name"], 1)} for file in AUTH_FILES]}
     if path == f"{API_BASE}/keys":
@@ -1341,7 +1341,7 @@ def payload_for(path, query):
         return {"entries": entries[:limit], "level_counts": counts,
                 "next_before_id": entries[limit - 1]["id"] if len(entries) > limit else 0}
     if path == f"{API_BASE}/auth-files":
-        return {"files": AUTH_FILES}
+        return {"files": [{**file, "current_concurrency": 2, "max_concurrency": CREDENTIAL_SETTINGS["max_concurrency"]} for file in AUTH_FILES]}
     if path == f"{API_BASE}/auth-files/quota":
         return auth_file_quota(query)
     if path == f"{API_BASE}/prices/reference":

@@ -105,7 +105,7 @@ func TestManagementRegistrationExposesOnlyCurrentEndpoints(t *testing.T) {
 		"DELETE /database/request-events", "GET /plugin-logs", "DELETE /plugin-logs", "GET /auth-files", "GET /auth-files/quota",
 		"POST /auth-files/quota/reset",
 		// Shared settings and task lifecycle are management-only.
-		"GET /credential-settings", "PUT /credential-settings", "POST /credential-task-session", "POST /credential-task-slot", "POST /credential-task-result",
+		"GET /credential-settings", "PUT /credential-settings", "POST /credential-task-session", "POST /credential-task-slot", "POST /credential-task-result", "POST /credential-task-status",
 	} {
 		wantRoutes[value] = false
 	}

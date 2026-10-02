@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestProbeResponseCompletion(t *testing.T) {
@@ -79,5 +80,35 @@ func TestCodexProbesReserveReportAndRelease(t *testing.T) {
 	session{Origin: server.URL, Key: "dummy-management-session", Parent: os.Getppid()}.probeAll(cfg)
 	if slots != 1 || releases != 1 || probes != 1 || reports != 1 {
 		t.Fatalf("slots=%d releases=%d probes=%d reports=%d", slots, releases, probes, reports)
+	}
+}
+
+// Status publication uses the exact computed deadline and propagates server rejection.
+func TestReportSchedule(t *testing.T) {
+	cfg := tasksettings.Default()
+	next := time.Date(2026, 10, 3, 1, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != base+"/credential-task-status" {
+			t.Error(r.URL.Path)
+		}
+		var body struct {
+			Settings tasksettings.Settings `json:"settings"`
+			Started  bool                  `json:"started"`
+			Next     time.Time             `json:"next_run_at"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		if body.Settings != cfg || !body.Next.Equal(next) {
+			t.Errorf("unexpected timing payload: %+v", body)
+		}
+		if body.Started {
+			w.WriteHeader(http.StatusConflict)
+		}
+	}))
+	defer server.Close()
+	s := session{Origin: server.URL, Key: "dummy"}
+	if !s.reportSchedule(cfg, false, next) || s.reportSchedule(cfg, true, next) {
+		t.Fatal("schedule reporting ignored server status")
 	}
 }

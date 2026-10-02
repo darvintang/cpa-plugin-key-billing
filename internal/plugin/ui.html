@@ -1143,11 +1143,23 @@
       }
       .credential-weight-status { grid-column: 1 / -1; overflow-wrap: anywhere; }
       .credential-weight-status:empty { display: none; }
+      .credential-weight-help { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
       /* Keep the two settings groups visually independent while retaining one atomic save. */
       #credential-settings-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
       .credential-limit-field { max-width: 320px; }
       .credential-task-toggle { margin-bottom: 16px; }
-      .credential-settings-actions { margin-bottom: 20px; }
+      .credential-settings-actions { margin-top: 16px; }
+      .credential-task-times {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 28px;
+        margin-top: 16px;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+      .credential-task-times > div { display: grid; gap: 4px; }
+      .credential-task-times time { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+      .auth-file-concurrency { margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
       .auth-file-main { display: flex; align-items: flex-start; gap: 10px; min-width: 0; flex: 1; }
       .auth-file-identity { min-width: 0; flex: 1; }
       .auth-file-email-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2371,8 +2383,12 @@
                 <label class="field"><span data-i18n="ui.credential_test_prompt">Test prompt</span><input id="credential-task-prompt" value="Reply with OK." /></label>
               </div>
               <p class="muted small" data-i18n="ui.credential_task_hint">One schedule applies to all enabled Codex files. Disabled or busy credentials are skipped. Test requests consume upstream quota.</p>
+              <div class="credential-task-times" aria-live="polite">
+                <div><span data-i18n="ui.credential_last_run">Last execution</span><time id="credential-last-run"></time></div>
+                <div><span data-i18n="ui.credential_next_run">Estimated next execution</span><time id="credential-next-run"></time></div>
               </div>
               <div class="row credential-settings-actions"><button id="credential-settings-save" class="primary" type="submit" data-i18n="ui.save">Save</button><span id="credential-settings-status" class="small muted" role="status"></span></div>
+              </div>
               </fieldset>
           </form>
         </section>
@@ -5906,6 +5922,11 @@
                   refreshButton
                 )
               ),
+              ...(account
+                ? []
+                : [
+                    el("div", { class: "auth-file-concurrency", "data-auth-index": file.auth_index, text: credentialConcurrencyText(file) })
+                  ]),
               renderAuthFileQuota(file, account)
             );
           }
@@ -9361,10 +9382,55 @@
         $("credential-time-field").classList.toggle("hidden", !daily);
         $("credential-interval-field").classList.toggle("hidden", daily);
       }
+      function credentialConcurrencyText(file) {
+        return m("ui.credential_concurrency_status", {
+          v0: int(file.current_concurrency),
+          v1: file.max_concurrency ? int(file.max_concurrency) : m("ui.unlimited")
+        });
+      }
+      // These timestamps come from the worker; refreshing never advances the schedule.
+      function renderCredentialTimes(result) {
+        const format = (value) =>
+          new Date(value).toLocaleString(locale(), { timeZone: result.settings.timezone, hour12: false, timeZoneName: "short" });
+        const last = $("credential-last-run"), next = $("credential-next-run");
+        last.textContent = result.last_run_at ? format(result.last_run_at) : m("ui.credential_never_run");
+        last.dateTime = result.last_run_at || "";
+        next.textContent = result.next_run_at
+          ? format(result.next_run_at)
+          : m(
+              !result.settings.enabled
+                ? "ui.disabled"
+                : result.executing ? "ui.credential_executing" : result.running ? "ui.credential_scheduling" : "ui.credential_task_waiting"
+            );
+        next.dateTime = result.next_run_at || "";
+      }
+      // Refresh live status only, leaving unsaved form values and weight inputs untouched.
+      let credentialStatusLoading = false;
+      setInterval(async () => {
+        if (credentialStatusLoading || document.hidden || currentRole !== "admin") return;
+        const tab = activeTab(false), generation = sessionGeneration;
+        if (!["settings", "auth-files"].includes(tab)) return;
+        credentialStatusLoading = true;
+        try {
+          const result = await plugin("GET", tab === "settings" ? "/credential-settings" : "/auth-files");
+          if (generation !== sessionGeneration || currentRole !== "admin" || activeTab(false) !== tab) return;
+          if (tab === "settings") renderCredentialTimes(result);
+          else {
+            const files = new Map((result.files || []).map((file) => [file.auth_index, file]));
+            for (const node of $("auth-files-body").querySelectorAll(".auth-file-concurrency")) {
+              const file = files.get(node.dataset.authIndex);
+              if (file) setText(node, credentialConcurrencyText(file));
+            }
+          }
+        } catch (_) {
+          /* A temporary status failure must not discard an edit. */
+        } finally { credentialStatusLoading = false; }
+      }, 5000);
       async function loadCredentialSettings() {
         $("credential-settings-fields").disabled = true;
         const result = await plugin("GET", "/credential-settings");
         const cfg = result.settings;
+        renderCredentialTimes(result);
         $("credential-max-concurrency").value = cfg.max_concurrency;
         $("credential-task-enabled").checked = cfg.enabled;
         $("credential-task-mode").value = cfg.mode;
@@ -9400,6 +9466,7 @@
           $("credential-settings-save").disabled = true;
           try {
             const result = await plugin("PUT", "/credential-settings?origin=" + encodeURIComponent(location.origin), cfg);
+            renderCredentialTimes(result);
             setText($("credential-settings-status"), result.error || m("ui.saved"));
           } finally { $("credential-settings-save").disabled = false; }
         });
@@ -9443,7 +9510,17 @@
           clearTimeout(timer);
           if (pending !== null) guard(save);
         };
-        return el("label", { class: "credential-weight" }, el("span", { text: m("ui.credential_call_weight") }), input, status);
+        return el(
+          "label",
+          { class: "credential-weight" },
+          el("span", {
+            class: "credential-weight-help",
+            text: m("ui.credential_call_weight"),
+            ...hoverTooltipProps(() => [el("div", { class: "hover-tooltip-body", text: m("ui.credential_weight_help") })], true)
+          }),
+          input,
+          status
+        );
       }
 
       const TABS = Array.from(document.querySelectorAll(".tabs button[data-tab]"));

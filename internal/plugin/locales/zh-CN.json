@@ -686,5 +686,12 @@
   "ui.database_cleanup": "清理历史请求事件",
   "ui.database_cleanup_hint": "删除指定天数之前的请求事件及关联错误详情，历史分析将不再包含这些记录。累计计费和配额不变，释放的数据库空间供后续写入复用。",
   "ui.database_cleanup_confirm": "永久删除 {v0} 天前的请求事件？此操作无法撤销。",
-  "ui.database_cleanup_done": "已清理 {v0} 条请求事件。"
+  "ui.database_cleanup_done": "已清理 {v0} 条请求事件。",
+  "ui.credential_last_run": "上次执行时间",
+  "ui.credential_next_run": "预计下次执行时间",
+  "ui.credential_never_run": "尚未执行",
+  "ui.credential_executing": "执行中，完成后安排下一次",
+  "ui.credential_concurrency_status": "当前并发：{v0} / 并发上限：{v1}",
+  "ui.credential_weight_help": "在相同优先级且满足路由、额度和并发条件的凭证中，权重越大，分配到的请求比例越高。默认值为 1，设为 0 则不参与调度。修改后自动保存。",
+  "ui.credential_scheduling": "等待调度时间"
 }

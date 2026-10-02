@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"cpa-key-billing-plus/internal/billing"
 	"cpa-key-billing-plus/internal/tasksettings"
@@ -22,6 +23,9 @@ const credentialRequestHeader = "X-Cpa-Billing-Plus-Request"
 type credentialControls struct {
 	mu          sync.Mutex
 	settings    tasksettings.Settings
+	lastRunAt   time.Time
+	nextRunAt   time.Time
+	executing   bool
 	path        string
 	active      map[string]string
 	counts      map[string]int
@@ -35,21 +39,24 @@ func (c *credentialControls) configure(path string) error {
 	if c.path == path {
 		return nil
 	}
-	cfg := tasksettings.Default()
+	saved := struct {
+		tasksettings.Settings
+		LastRunAt time.Time `json:"last_run_at"`
+	}{Settings: tasksettings.Default()}
 	raw, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	if err == nil {
-		if err = json.Unmarshal(raw, &cfg); err != nil {
+		if err = json.Unmarshal(raw, &saved); err != nil {
 			return err
 		}
 	}
-	if err = cfg.Validate(); err != nil {
+	if err = saved.Settings.Validate(); err != nil {
 		return err
 	}
 	c.stopWorker()
-	c.path, c.settings = path, cfg
+	c.path, c.settings, c.lastRunAt = path, saved.Settings, saved.LastRunAt
 	if c.active == nil {
 		c.active = map[string]string{}
 		c.counts = map[string]int{}
@@ -58,6 +65,7 @@ func (c *credentialControls) configure(path string) error {
 }
 
 func (c *credentialControls) stopWorker() {
+	c.nextRunAt, c.executing = time.Time{}, false
 	if c.worker != nil {
 		_ = c.worker.Kill()
 		_, _ = c.worker.Wait()
@@ -128,25 +136,11 @@ func (a *App) credentialSettings(req ManagementRequest) ManagementResponse {
 		if err := cfg.Validate(); err != nil {
 			return JSONError(400, "invalid", err.Error())
 		}
-		raw, _ := json.MarshalIndent(cfg, "", "  ")
-		temp, err := os.CreateTemp(filepath.Dir(c.path), ".plus-settings-*")
-		if err != nil {
+		if err := c.saveSettings(cfg, c.lastRunAt); err != nil {
 			return JSONError(500, "save_failed", err.Error())
 		}
-		defer os.Remove(temp.Name())
-		_, err = temp.Write(raw)
-		if err == nil {
-			err = temp.Sync()
-		}
-		closeErr := temp.Close()
-		if err == nil {
-			err = closeErr
-		}
-		if err == nil {
-			err = os.Rename(temp.Name(), c.path)
-		}
-		if err != nil {
-			return JSONError(500, "save_failed", err.Error())
+		if !sameTaskSchedule(cfg, c.settings) {
+			c.nextRunAt, c.executing = time.Time{}, false
 		}
 		c.settings = cfg
 	}
@@ -154,10 +148,15 @@ func (a *App) credentialSettings(req ManagementRequest) ManagementResponse {
 	if req.Query.Get("origin") != "" {
 		key := strings.TrimPrefix(req.Headers.Get("Authorization"), "Bearer ")
 		if err := c.startWorker(req.Query.Get("origin"), key); err != nil {
-			return JSONResponse(200, map[string]any{"settings": c.settings, "running": false, "error": err.Error()})
+			return JSONResponse(200, map[string]any{"settings": c.settings, "running": false, "error": err.Error(), "last_run_at": taskTimestamp(c.lastRunAt), "next_run_at": nil})
 		}
 	}
-	return JSONResponse(200, map[string]any{"settings": c.settings, "running": c.worker != nil && c.settings.Enabled})
+	next := c.nextRunAt
+	running := c.worker != nil && c.settings.Enabled
+	if !running {
+		next = time.Time{}
+	}
+	return JSONResponse(200, map[string]any{"settings": c.settings, "running": running, "executing": running && c.executing, "last_run_at": taskTimestamp(c.lastRunAt), "next_run_at": taskTimestamp(next)})
 }
 
 func (a *App) credentialLimit() int {
@@ -242,4 +241,102 @@ func (a *App) credentialTaskResult(req ManagementRequest) ManagementResponse {
 	}
 	a.store.AddPluginLog(billing.PluginLogInfo, "Scheduled Codex test auth_index=%q success=%t status=%d", cleanText(body.AuthIndex), body.Success, body.Status)
 	return JSONResponse(200, map[string]bool{"recorded": true})
+}
+
+// Persist the last batch start with settings so a host restart retains the history.
+func (c *credentialControls) saveSettings(cfg tasksettings.Settings, last time.Time) error {
+	raw, _ := json.MarshalIndent(struct {
+		tasksettings.Settings
+		LastRunAt time.Time `json:"last_run_at,omitempty"`
+	}{cfg, last}, "", "  ")
+	temp, err := os.CreateTemp(filepath.Dir(c.path), ".plus-settings-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+	_, err = temp.Write(raw)
+	if err == nil {
+		err = temp.Sync()
+	}
+	closeErr := temp.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(temp.Name(), c.path)
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func taskTimestamp(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339)
+}
+
+func sameTaskSchedule(a, b tasksettings.Settings) bool {
+	a.MaxConcurrency, b.MaxConcurrency = 0, 0
+	return a == b
+}
+
+// Only the worker's current schedule may publish timing; edits invalidate old reports.
+func (a *App) credentialTaskStatus(req ManagementRequest) ManagementResponse {
+	var body struct {
+		Settings  tasksettings.Settings `json:"settings"`
+		Started   bool                  `json:"started"`
+		NextRunAt time.Time             `json:"next_run_at"`
+	}
+	if err := decodeStrict(req.Body, &body); err != nil {
+		return errorResponse(err)
+	}
+	c := &a.controls
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.settings.Enabled || !sameTaskSchedule(body.Settings, c.settings) {
+		return JSONError(409, "schedule_changed", "Task schedule changed")
+	}
+	if body.Started {
+		now := time.Now()
+		if err := c.saveSettings(c.settings, now); err != nil {
+			return JSONError(500, "save_failed", err.Error())
+		}
+		c.lastRunAt, c.nextRunAt, c.executing = now, time.Time{}, true
+	} else {
+		if body.NextRunAt.IsZero() {
+			return JSONError(400, "invalid", "Next execution time is required")
+		}
+		c.nextRunAt, c.executing = body.NextRunAt, false
+	}
+	return JSONResponse(200, map[string]bool{"recorded": true})
+}
+
+// Match host lifecycle IDs, including failover, while keeping completion and observation ordered.
+func (a *App) observeCredentialConcurrency(requestID, authID string) {
+	if requestID == "" || authID == "" {
+		return
+	}
+	a.admissionsMu.Lock()
+	defer a.admissionsMu.Unlock()
+	if admission := a.admissions[requestID]; admission != nil && admission.completed {
+		return
+	}
+	c := &a.controls
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	previous := c.active[requestID]
+	if previous == authID {
+		return
+	}
+	if previous != "" {
+		c.counts[previous]--
+		if c.counts[previous] <= 0 {
+			delete(c.counts, previous)
+		}
+	}
+	c.active[requestID] = authID
+	c.counts[authID]++
 }

@@ -70,12 +70,23 @@ func main() {
 				next = cfg.Next(time.Now())
 			}
 			if cfg.Enabled && !time.Now().Before(next) {
-				s.probeAll(cfg)
-				next = cfg.Next(time.Now())
+				if s.reportSchedule(cfg, true, time.Time{}) {
+					s.probeAll(cfg)
+					next = cfg.Next(time.Now())
+				}
+			}
+			if cfg.Enabled {
+				s.reportSchedule(cfg, false, next)
 			}
 		}
 		time.Sleep(time.Second * 5)
 	}
+}
+
+// Report the exact worker deadline rather than recalculating it in the browser.
+func (s session) reportSchedule(cfg tasksettings.Settings, started bool, next time.Time) bool {
+	_, status, err := s.call("POST", base+"/credential-task-status", map[string]any{"settings": cfg, "started": started, "next_run_at": next})
+	return err == nil && status == http.StatusOK
 }
 
 func (s session) probeAll(cfg tasksettings.Settings) {

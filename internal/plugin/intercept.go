@@ -155,6 +155,10 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("Parse post-auth request interception parameters: %w", errUnmarshal)
 	}
 	if a != nil {
+		// Host-selected identity tracks unlimited traffic too; admission reservations are not counted twice.
+		if a.store != nil && a.store.Enabled() && metadataString(req.Metadata, MetadataSource) != SourcePluginHostModelCallback {
+			a.observeCredentialConcurrency(req.RequestID, metadataString(req.Metadata, MetadataSelectedAuth))
+		}
 		a.observeRouteCredential(
 			req.RequestID,
 			metadataString(req.Metadata, MetadataSelectedAuth),

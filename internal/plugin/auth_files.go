@@ -46,6 +46,8 @@ type hostAuthFile struct {
 }
 
 type authFileView struct {
+	CurrentConcurrency *int             `json:"current_concurrency,omitempty"`
+	MaxConcurrency     *int             `json:"max_concurrency,omitempty"`
 	AuthIndex          string           `json:"auth_index"`
 	Name               string           `json:"name"`
 	Category           string           `json:"category"`
@@ -229,6 +231,14 @@ func (a *App) listAuthFiles(access viewAccess) ([]authFileView, error) {
 			files = filtered
 		}
 	}
+	// Snapshot the same counters used for admission without holding the lock during host calls.
+	a.controls.mu.Lock()
+	limit := a.controls.settings.MaxConcurrency
+	counts := make(map[string]int, len(a.controls.counts))
+	for id, count := range a.controls.counts {
+		counts[id] = count
+	}
+	a.controls.mu.Unlock()
 	views := make([]authFileView, 0, len(files))
 	for _, file := range files {
 		if strings.TrimSpace(file.AuthIndex) == "" || strings.EqualFold(strings.TrimSpace(file.AccountType), "api_key") {
@@ -236,7 +246,13 @@ func (a *App) listAuthFiles(access viewAccess) ([]authFileView, error) {
 		}
 		category := authCategory(file.Type)
 		quotaSupported, quotaReason := authQuotaAvailability(file, category)
+		var current, maximum *int
+		if !access.APIKey {
+			count := counts[file.ID]
+			current, maximum = &count, &limit
+		}
 		views = append(views, authFileView{
+			CurrentConcurrency: current, MaxConcurrency: maximum,
 			AuthIndex: file.AuthIndex, Name: file.Name, Category: category, Email: cleanText(file.Email),
 			Disabled: file.Disabled, Unavailable: file.Unavailable,
 			QuotaSupported: quotaSupported, QuotaReason: quotaReason, CacheRevision: authFileRevision(file),

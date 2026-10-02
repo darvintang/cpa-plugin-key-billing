@@ -686,5 +686,12 @@
   "ui.database_cleanup": "Clean up old request events",
   "ui.database_cleanup_hint": "Delete request events older than the specified number of days, including their error details and historical analysis. Accumulated billing and quotas are preserved. Freed database space is reused.",
   "ui.database_cleanup_confirm": "Permanently delete request events older than {v0} days? This cannot be undone.",
-  "ui.database_cleanup_done": "Deleted {v0} request events."
+  "ui.database_cleanup_done": "Deleted {v0} request events.",
+  "ui.credential_last_run": "Last execution",
+  "ui.credential_next_run": "Estimated next execution",
+  "ui.credential_never_run": "Not run yet",
+  "ui.credential_executing": "Executing; scheduled after completion",
+  "ui.credential_concurrency_status": "Current concurrency: {v0} / Limit: {v1}",
+  "ui.credential_weight_help": "Within the same priority and eligible credential pool, a higher weight receives a larger share of requests. The default is 1; 0 excludes the credential from scheduling. Changes save automatically.",
+  "ui.credential_scheduling": "Waiting for worker schedule"
 }

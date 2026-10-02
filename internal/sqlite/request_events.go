@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func appendRequestEvent(tx *sql.Tx, entry billing.RequestEvent) (int64, error) {
@@ -164,6 +164,10 @@ func (d *DB) RequestEvents(query billing.RequestEventQuery, since time.Time) (bi
 
 func eventFilter(source string, query billing.RequestEventQuery, since time.Time) (string, []any) {
 	where, args := eventTimeFilter(source, query.From, query.To, since)
+	// Filter in SQL before pagination so non-GPT rows cannot produce empty pages.
+	if query.GPTOnly {
+		where += " AND (lower(" + eventModelSQL + ") LIKE 'gpt-%' OR lower(" + eventModelSQL + ") LIKE '%/gpt-%')"
+	}
 	if query.SnapshotID != nil {
 		where += " AND r.id <= ?"
 		args = append(args, *query.SnapshotID)
@@ -212,7 +216,7 @@ func eventTimeFilter(source string, from, to, since time.Time) (string, []any) {
 
 func (d *DB) requestEventFilterValues(query billing.RequestEventQuery, since time.Time) (*billing.RequestEventFilterValues, error) {
 	where, args := eventFilter(requestEventSource, billing.RequestEventQuery{
-		Scope: query.Scope, From: query.From, To: query.To, SnapshotID: query.SnapshotID,
+		Scope: query.Scope, From: query.From, To: query.To, SnapshotID: query.SnapshotID, GPTOnly: query.GPTOnly,
 	}, since)
 	rows, errQuery := d.db.Query(`SELECT DISTINCT `+eventModelSQL+`,
 		`+requestEventSourceName+`, r.executor_type, r.provider`+where, args...)
@@ -341,4 +345,14 @@ func asciiLower(value string) string {
 		}
 	}
 	return string(bytes)
+}
+
+// The foreign key cascades obsolete error details in the same atomic statement.
+func (d *DB) DeleteRequestEventsBefore(cutoff time.Time) (int, error) {
+	result, err := d.db.Exec("DELETE FROM request_events WHERE at < ?", nanos(cutoff))
+	if err != nil {
+		return 0, fmt.Errorf("Clean up request events: %w", err)
+	}
+	count, err := result.RowsAffected()
+	return int(count), err
 }

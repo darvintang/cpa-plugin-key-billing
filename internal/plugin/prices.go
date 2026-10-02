@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func (a *App) listPrices(req ManagementRequest, access viewAccess) ManagementResponse {
@@ -46,9 +46,24 @@ func (a *App) searchReferencePrices(req ManagementRequest) ManagementResponse {
 		}
 		limit = parsed
 	}
+	if req.Query.Get("gpt_only") == "true" {
+		limit = 50
+	}
 	prices, err := a.store.SearchReferencePrices(req.Query.Get("q"), limit)
 	if err != nil {
 		return errorResponse(err)
+	}
+	// The narrowed picker hides other providers without deleting their stored pricing.
+	if req.Query.Get("gpt_only") == "true" {
+		kept := prices[:0]
+		for _, price := range prices {
+			model := strings.ToLower(price.ModelID)
+			parts := strings.Split(model, "/")
+			if strings.HasPrefix(parts[len(parts)-1], "gpt-") {
+				kept = append(kept, price)
+			}
+		}
+		prices = kept
 	}
 	return JSONResponse(http.StatusOK, map[string]any{"prices": prices})
 }

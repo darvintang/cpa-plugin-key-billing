@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 type accountIdentity struct {
@@ -199,7 +199,7 @@ func accountScope(headers http.Header) (string, bool) {
 
 func apiKeyUnauthorized() ManagementResponse {
 	response := apiKeyJSONError(http.StatusUnauthorized, "unauthorized", "Invalid API key")
-	response.Headers.Set("WWW-Authenticate", `Bearer realm="cpa-key-billing-account"`)
+	response.Headers.Set("WWW-Authenticate", `Bearer realm="cpa-key-billing-plus-account"`)
 	return response
 }
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 var eventStart = time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
@@ -340,5 +340,54 @@ func TestEventKeysIncludeOrphanedZeroUsage(t *testing.T) {
 		if key.Preview != billing.UnknownKeyPreview {
 			t.Fatalf("unexpected preview: %+v", key)
 		}
+	}
+}
+
+// GPT filtering must affect totals and model choices before applying the page limit.
+func TestRequestEventsGPTOnly(t *testing.T) {
+	database, state := requestEventDatabase(t)
+	extra := requestEvent("scope-a", eventStart.Add(10*time.Minute))
+	extra.BillingModel = "claude-test"
+	mustSave(t, database, state, billing.Changes{NormalRequestEvents: []billing.RequestEvent{extra}})
+	view := mustQueryRequestEvents(t, database, billing.RequestEventQuery{GPTOnly: true, Limit: 2, IncludeFilters: true})
+	if view.Total != 6 || len(view.Entries) != 2 || !reflect.DeepEqual(view.Filters.Models, []string{"gpt-5.5"}) {
+		t.Fatalf("GPT page=%+v", view)
+	}
+	all := mustQueryRequestEvents(t, database, billing.RequestEventQuery{})
+	if all.Total != 7 {
+		t.Fatal("historical non-GPT event was removed")
+	}
+}
+
+// Cleanup includes failed events, preserves the boundary and never changes billing state.
+func TestDeleteRequestEventsBefore(t *testing.T) {
+	database, _ := requestEventDatabase(t)
+	before, err := database.Load(time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutoff := eventStart.Add(5 * time.Minute)
+	cleared, err := database.DeleteRequestEventsBefore(cutoff)
+	if err != nil || cleared != 5 {
+		t.Fatalf("cleared=%d err=%v", cleared, err)
+	}
+	view := mustQueryRequestEvents(t, database, billing.RequestEventQuery{})
+	if view.Total != 1 || !view.Entries[0].At.Equal(cutoff) {
+		t.Fatalf("boundary not retained: %+v", view)
+	}
+	var errors int
+	if err := database.db.QueryRow("SELECT count(*) FROM request_errors").Scan(&errors); err != nil || errors != 1 {
+		t.Fatalf("orphan error details: %d, %v", errors, err)
+	}
+	after, err := database.Load(time.Time{}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before.State, after.State) {
+		t.Fatal("cleanup changed billing state")
+	}
+	cleared, err = database.DeleteRequestEventsBefore(cutoff)
+	if err != nil || cleared != 0 {
+		t.Fatalf("repeat cleanup=%d err=%v", cleared, err)
 	}
 }

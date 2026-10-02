@@ -15,8 +15,11 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 UI_PATH = ROOT / "internal" / "plugin" / "ui.html"
-API_BASE = "/v0/management/plugins/cpa-key-billing"
-RESOURCE_BASE = "/v0/resource/plugins/cpa-key-billing"
+API_BASE = "/v0/management/plugins/cpa-key-billing-plus"
+RESOURCE_BASE = "/v0/resource/plugins/cpa-key-billing-plus"
+# Shared credential policy mirrors the plugin; host weights remain per file.
+CREDENTIAL_SETTINGS = {"max_concurrency": 0, "enabled": False, "mode": "interval", "interval_minutes": 60, "time_of_day": "09:00", "timezone": "Asia/Shanghai", "model": "", "prompt": "Reply with OK."}
+AUTH_WEIGHTS = {}
 NOW = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 CALLER_SCOPE_SALT = b"cli-proxy-api:caller-scope:v1\0"
 
@@ -817,6 +820,9 @@ def request_event_view(query, scope=""):
     limit = max(0, int(query.get("limit", ["0"])[0] or 0))
     time_matched = filter_event_time([entry for entry in REQUEST_EVENTS
                                      if int(entry["id"]) <= snapshot and (not scope or entry["scope"] == scope)], query)
+    # Filter before pagination, matching the SQL endpoint's GPT-only view.
+    if query.get("gpt_only") == ["true"]:
+        time_matched = [entry for entry in time_matched if (entry.get("billing_model") or entry.get("upstream_model", "")).split("/")[-1].lower().startswith("gpt-")]
     time_matched.sort(key=lambda entry: (entry["at"], int(entry["id"])), reverse=True)
     source_values = sorted({entry.get("source", "") for entry in time_matched} - {""}, key=str.lower)
     filter_options = {
@@ -998,7 +1004,7 @@ PLUGIN_LOGS = [
         "at": iso(NOW - timedelta(minutes=11)),
         "level": "info",
         "message": (
-            "已加载计费数据库 /srv/cli-proxy-api/plugins/cpa-key-billing-state-v1.db："
+            "已加载计费数据库 /srv/cli-proxy-api/plugins/cpa-key-billing-plus-state-v1.db："
             "8 个 API Key、3 个订阅计划、29 条请求事件。已启用。"
         ),
     },
@@ -1295,6 +1301,10 @@ def route_rows():
 
 
 def payload_for(path, query):
+    if path == f"{API_BASE}/credential-settings":
+        return {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"]}
+    if path == "/v0/management/auth-files":
+        return {"files": [{**file, "weight": AUTH_WEIGHTS.get(file["name"], 1)} for file in AUTH_FILES]}
     if path == f"{API_BASE}/keys":
         refresh_route_counts()
         return {"keys": key_rows()}
@@ -1549,8 +1559,28 @@ class Handler(BaseHTTPRequestHandler):
             self.mutation_view = json.loads(request_body or b"{}")
             request_body = json.dumps(self.mutation_view.get("data") or {}).encode()
         route = self.command, parsed.path
-        if route == ("POST", f"{API_BASE}/auth-files/quota/reset"):
+        if route == ("PUT", f"{API_BASE}/credential-settings"):
+            CREDENTIAL_SETTINGS.update(json.loads(request_body))
+            self.send_json(200, {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"]})
+        elif route == ("POST", f"{API_BASE}/credential-task-session"):
+            self.send_json(200, {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"]})
+        elif route == ("PATCH", "/v0/management/auth-files/fields"):
+            body = json.loads(request_body)
+            AUTH_WEIGHTS[body["name"]] = body["weight"]
+            self.send_json(200, {"saved": True})
+        elif route == ("POST", f"{API_BASE}/auth-files/quota/reset"):
             self.reset_auth_quota(parsed, AUTH_FILES)
+        elif route == ("DELETE", f"{API_BASE}/database/request-events"):
+            # Match the production retention floor and cascade error details.
+            days = json.loads(request_body or b"{}").get("days")
+            if type(days) is not int or not 4 <= days <= 36500:
+                self.send_json(400, {"error": "Retention days must be an integer between 4 and 36500"})
+                return
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            removed = {entry["id"] for entry in REQUEST_EVENTS if datetime.fromisoformat(entry["at"].replace("Z", "+00:00")) < cutoff}
+            REQUEST_EVENTS[:] = [entry for entry in REQUEST_EVENTS if entry["id"] not in removed]
+            ERRORS[:] = [entry for entry in ERRORS if entry["id"] not in removed]
+            self.send_json(200, {"cleared": len(removed)})
         elif route == ("DELETE", f"{API_BASE}/plugin-logs"):
             cleared = len(PLUGIN_LOGS)
             PLUGIN_LOGS.clear()

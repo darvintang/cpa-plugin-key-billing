@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 func TestAuthFilesExposeOnlyDisplayFieldsInCategoryOrder(t *testing.T) {

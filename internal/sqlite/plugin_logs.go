@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func (d *DB) AppendPluginLog(entry billing.PluginLog, cutoff time.Time) error {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func migrateToV17(tx *sql.Tx, version int) error {

@@ -1,8 +1,8 @@
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$repository = "haowang02/cpa-plugin-key-billing"
-$pluginName = "cpa-key-billing"
+$repository = "darvintang/cpa-plugin-key-billing"
+$pluginName = "cpa-key-billing-plus"
 $pluginFile = "$pluginName.dll"
 $pluginDir = Join-Path (Get-Location).Path "plugins"
 $tempDir = $null
@@ -108,6 +108,23 @@ try {
     catch {
         Fail "failed to extract $asset"
     }
+    # Keep the external task worker covered by the release checksums.
+    $workerAsset = "${pluginName}-worker_$($latestRelease.Version)_windows_${targetArch}.exe"
+    $workerFile = "${pluginName}-worker.exe"
+    $workerPath = Join-Path $tempDir $workerFile
+    Download-File -Uri "https://github.com/$repository/releases/download/$($latestRelease.Tag)/$workerAsset" -OutFile $workerPath
+    $workerPattern = [regex]::Escape($workerAsset)
+    $workerChecksum = $null
+    foreach ($line in Get-Content -Path $checksums) {
+        if ($line -match "^([0-9a-fA-F]{64})\s+\*?${workerPattern}$") {
+            $workerChecksum = $Matches[1].ToLowerInvariant()
+            break
+        }
+    }
+    if (-not $workerChecksum -or (Get-FileHash -Algorithm SHA256 -Path $workerPath).Hash.ToLowerInvariant() -ne $workerChecksum) {
+        Fail "task worker checksum mismatch"
+    }
+
     $extractedFile = Join-Path $tempDir $pluginFile
     if (-not (Test-Path -LiteralPath $extractedFile) -or (Get-Item -LiteralPath $extractedFile).Length -eq 0) {
         Fail "release archive contains a missing or empty $pluginFile"
@@ -118,6 +135,7 @@ try {
     Copy-Item -LiteralPath $extractedFile -Destination $stagedFile
     Move-Item -Force -LiteralPath $stagedFile -Destination (Join-Path $pluginDir $pluginFile)
     $stagedFile = $null
+    Copy-Item -Force -LiteralPath $workerPath -Destination (Join-Path $pluginDir $workerFile)
 
     Write-Host "Installed: $(Join-Path $pluginDir $pluginFile)"
     Write-Host "Restart CLIProxyAPI to load the plugin."

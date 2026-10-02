@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func requestErrorDatabase(t *testing.T) *DB {

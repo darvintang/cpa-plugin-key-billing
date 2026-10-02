@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func TestRegisterDeclaresExpectedCapabilities(t *testing.T) {
@@ -102,8 +102,10 @@ func TestManagementRegistrationExposesOnlyCurrentEndpoints(t *testing.T) {
 		"POST /keys/label", "POST /keys/concurrency", "POST /keys/sync",
 		"POST /credentials/sync",
 		"GET /analysis", "GET /events", "GET /events/keys", "GET /errors",
-		"GET /plugin-logs", "DELETE /plugin-logs", "GET /auth-files", "GET /auth-files/quota",
+		"DELETE /database/request-events", "GET /plugin-logs", "DELETE /plugin-logs", "GET /auth-files", "GET /auth-files/quota",
 		"POST /auth-files/quota/reset",
+		// Shared settings and task lifecycle are management-only.
+		"GET /credential-settings", "PUT /credential-settings", "POST /credential-task-session", "POST /credential-task-slot", "POST /credential-task-result",
 	} {
 		wantRoutes[value] = false
 	}

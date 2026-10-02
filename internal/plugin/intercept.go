@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 // Bound the retry hint so clients periodically recheck quota availability.
@@ -132,6 +132,19 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 		return OKEnvelope(quotaExhaustedResponse(req.SourceFormat, decision, now))
 	}
 
+	// Carry the trusted lifecycle identity to the scheduler and remove it before upstream execution.
+	if a.credentialLimit() > 0 {
+		if req.RequestID == "" {
+			return OKEnvelope(priceRefusal(req.SourceFormat, "invalid_request_id", "Request lifecycle identity is required"))
+		}
+		a.controls.mu.Lock()
+		if _, exists := a.controls.active[req.RequestID]; !exists {
+			a.controls.active[req.RequestID] = ""
+		}
+		a.controls.mu.Unlock()
+		admitted = true
+		return OKEnvelope(RequestInterceptResponse{Headers: http.Header{credentialRequestHeader: []string{req.RequestID}}})
+	}
 	admitted = true
 	return OKEnvelope(RequestInterceptResponse{})
 }
@@ -148,7 +161,7 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 			metadataString(req.Metadata, MetadataSelectedIndex),
 		)
 	}
-	return OKEnvelope(RequestInterceptResponse{})
+	return OKEnvelope(RequestInterceptResponse{ClearHeaders: []string{credentialRequestHeader}})
 }
 
 func (a *App) completeRequest(raw []byte) ([]byte, error) {
@@ -164,6 +177,7 @@ func (a *App) completeRequest(raw []byte) ([]byte, error) {
 				admission.completed = true
 			}
 			a.store.ReleaseSlot(completion.RequestID)
+			a.releaseCredential(completion.RequestID)
 		}()
 		a.finishRouteLog(completion)
 	}

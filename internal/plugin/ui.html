@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title data-i18n="ui.api_key_billing">API Key Billing</title>
+    <title data-i18n="ui.api_key_billing">API Key Billing Plus</title>
     <script>
       if (window.parent === window) {
         document.documentElement.setAttribute("data-cpamp-plugin-host", "true");
@@ -1001,7 +1001,7 @@
       .empty { padding: 26px; text-align: center; color: var(--text-tertiary); }
       .section-loading { min-height: 400px; }
       .auth-filter-bar { display: flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
-      .auth-filter-bar .native-select, .auth-filter-bar select { min-width: 150px; }
+      .auth-filter-bar .native-select, .auth-filter-bar select { min-width: 110px; }
       .auth-filter-bar input[type="search"] { flex: 0 1 var(--filter-search-width); min-width: 140px; }
       .toggle-filter {
         display: inline-flex;
@@ -1104,7 +1104,50 @@
           box-shadow: 0 7px 18px color-mix(in srgb, var(--text-primary) 10%, transparent);
         }
       }
-      .auth-file-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+      /* Identity and controls get separate rows so weight editing never squeezes the email. */
+      .auth-file-head { display: grid; gap: 14px; }
+      .credential-weight {
+        display: grid;
+        grid-template-columns: auto 64px;
+        align-items: center;
+        gap: 4px 8px;
+        margin: 0 auto 0 0;
+        padding: 2px 8px;
+        border: 1px solid transparent;
+        border-radius: var(--radius-md);
+        background: color-mix(in srgb, var(--text-secondary) 6%, transparent);
+        min-width: 0;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+      /* The label and value form one quiet control; the outline appears only while editing. */
+      .credential-weight:focus-within { border-color: var(--primary-color); }
+      :root .credential-weight input {
+        width: 64px;
+        min-height: 26px;
+        height: 26px;
+        padding: 2px 0;
+        border: 0;
+        border-radius: 0;
+        outline: none;
+        background: transparent;
+        box-shadow: none;
+        font-size: 12px;
+        font-weight: 600;
+        text-align: right;
+        appearance: textfield;
+      }
+      .credential-weight input::-webkit-inner-spin-button, .credential-weight input::-webkit-outer-spin-button {
+        appearance: none;
+        margin: 0;
+      }
+      .credential-weight-status { grid-column: 1 / -1; overflow-wrap: anywhere; }
+      .credential-weight-status:empty { display: none; }
+      /* Keep the two settings groups visually independent while retaining one atomic save. */
+      #credential-settings-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+      .credential-limit-field { max-width: 320px; }
+      .credential-task-toggle { margin-bottom: 16px; }
+      .credential-settings-actions { margin-bottom: 20px; }
       .auth-file-main { display: flex; align-items: flex-start; gap: 10px; min-width: 0; flex: 1; }
       .auth-file-identity { min-width: 0; flex: 1; }
       .auth-file-email-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1153,7 +1196,7 @@
       :root[data-theme="dark"] .auth-provider-icon[data-provider="xai"] {
         box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
       }
-      .auth-file-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+      .auth-file-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
       .auth-refresh-icon-button {
         display: grid;
         place-items: center;
@@ -1541,10 +1584,9 @@
         display: flex;
         flex-direction: column;
       }
-      .plugin-log-card { --event-list-top: var(--page-gap); }
-      @media (min-width: 769px) {
-        .plugin-log-card { max-height: 720px; }
-      }
+      /* Shrink empty and short logs; retain bounded scrolling for incremental loading. */
+      .plugin-log-card { height: auto; max-height: min(720px, 85svh); }
+      .plugin-log-card .event-list-region { flex: 0 1 auto; }
       @media (max-width: 768px), (max-height: 520px) {
         .event-list-card { --event-list-top: var(--page-gap); }
       }
@@ -2130,7 +2172,7 @@
       /* Apply the host or stored theme before painting the body. */
       (function () {
         const STORE_KEY = "cli-proxy-theme";
-        const PLUGIN_STORE_KEY = "cpa-key-billing:theme";
+        const PLUGIN_STORE_KEY = "cpa-key-billing-plus:theme";
 
         function parentDocument() {
           if (window.parent === window) return null;
@@ -2232,7 +2274,7 @@
 
       <main id="app" class="hidden">
         <header class="head app-header">
-          <div class="app-title"><h1 data-i18n="ui.api_key_billing">API Key Billing</h1></div>
+          <div class="app-title"><h1 data-i18n="ui.api_key_billing">API Key Billing Plus</h1></div>
           <div class="standalone-actions" aria-label="Page actions" data-i18n-aria-label="ui.page_actions">
             <button type="button" class="icon-action" data-page-action="refresh" aria-label="Refresh" data-i18n-aria-label="ui.refresh"></button>
             <button type="button" class="icon-action" data-page-action="theme" aria-label="Switch theme" data-i18n-aria-label="ui.switch_theme"></button>
@@ -2306,6 +2348,34 @@
         </section>
 
         <section id="tab-analysis" class="hidden"><div id="analysis-body"></div></section>
+
+        <section id="tab-credential-settings" class="hidden">
+          <form id="credential-settings-form">
+            <fieldset id="credential-settings-fields" disabled>
+              <div class="card">
+                <h2 data-i18n="ui.credential_max_concurrency">Maximum concurrent requests per credential</h2>
+              <div class="credential-limit-field">
+                <label class="field"><input aria-label="Maximum concurrent requests per credential" data-i18n-aria-label="ui.credential_max_concurrency" id="credential-max-concurrency" type="number" min="0" max="1000000" value="0" required /></label>
+              </div>
+              <p class="muted small" data-i18n="ui.credential_global_limit_hint">Applies to every credential. Zero means unlimited.</p>
+              </div>
+              <div class="card">
+              <h2 data-i18n="ui.credential_test_tasks">Conditional tasks</h2>
+              <label class="toggle-filter credential-task-toggle"><input id="credential-task-enabled" type="checkbox" role="switch" /><span data-i18n="ui.credential_test_enabled">Send scheduled Codex test requests</span></label>
+              <div class="plan-details">
+                <label class="field"><span data-i18n="ui.credential_schedule">Schedule</span><span class="native-select"><select id="credential-task-mode"><option value="interval" data-i18n="ui.credential_interval">Minute interval</option><option value="daily" data-i18n="ui.credential_daily">Daily at a specified time</option></select></span></label>
+                <label id="credential-interval-field" class="field"><span data-i18n="ui.credential_interval_minutes">Interval in minutes</span><input id="credential-task-interval" type="number" min="1" max="525600" value="60" required /></label>
+                <label id="credential-time-field" class="field hidden"><span data-i18n="ui.credential_daily_time">Daily time</span><input id="credential-task-time" type="time" value="09:00" required /></label>
+                <label class="field"><span data-i18n="ui.credential_timezone">Time zone</span><input id="credential-task-timezone" value="Asia/Shanghai" required /></label>
+                <label class="field"><span data-i18n="ui.credential_test_model">GPT test model</span><input id="credential-task-model" list="credential-task-models" /><datalist id="credential-task-models"></datalist></label>
+                <label class="field"><span data-i18n="ui.credential_test_prompt">Test prompt</span><input id="credential-task-prompt" value="Reply with OK." /></label>
+              </div>
+              <p class="muted small" data-i18n="ui.credential_task_hint">One schedule applies to all enabled Codex files. Disabled or busy credentials are skipped. Test requests consume upstream quota.</p>
+              </div>
+              <div class="row credential-settings-actions"><button id="credential-settings-save" class="primary" type="submit" data-i18n="ui.save">Save</button><span id="credential-settings-status" class="small muted" role="status"></span></div>
+              </fieldset>
+          </form>
+        </section>
 
         <section id="tab-plans" class="hidden">
           <div class="card">
@@ -2442,11 +2512,9 @@
                 <span class="native-select">
                   <select id="auth-provider" aria-label="Filter by auth file category" data-i18n-aria-label="ui.filter_by_auth_file_category">
                     <option value="" data-i18n="ui.all_categories">All categories</option>
-                    <option value="claude">Claude</option>
-                    <option value="antigravity">Antigravity</option>
+
                     <option value="codex">Codex</option>
-                    <option value="xai">xAI</option>
-                    <option value="kimi">Kimi</option>
+
                   </select>
                 </span>
                 <input id="auth-search" type="search" placeholder="Search auth files" autocomplete="off"  data-i18n-placeholder="ui.search_auth_files"/>
@@ -2454,6 +2522,18 @@
               </div>
             </div>
             <div id="auth-files-body"></div>
+          </div>
+        </section>
+
+        <!-- Database maintenance sits between model pricing and operational logs in Settings. -->
+        <section id="tab-database" class="hidden">
+          <div class="card">
+            <h2 data-i18n="ui.database_management">Database management</h2>
+            <form id="database-cleanup-form">
+              <label class="field credential-limit-field"><span data-i18n="ui.database_retention_days">Retain recent days (minimum 4)</span><input id="database-retention-days" type="number" min="4" max="36500" step="1" value="30" required /></label>
+              <p class="muted small" data-i18n="ui.database_cleanup_hint">Delete request events older than the specified number of days, including their error details and historical analysis. Accumulated billing and quotas are preserved. Freed database space is reused.</p>
+              <div class="row"><button type="submit" class="danger" data-i18n="ui.database_cleanup">Clean up old request events</button><span id="database-cleanup-status" class="small muted" role="status"></span></div>
+            </form>
           </div>
         </section>
 
@@ -2610,11 +2690,9 @@
                   <span class="native-select">
                     <select id="account-auth-provider" aria-label="Filter by auth file category" data-i18n-aria-label="ui.filter_by_auth_file_category">
                       <option value="" data-i18n="ui.all_categories">All categories</option>
-                      <option value="claude">Claude</option>
-                      <option value="antigravity">Antigravity</option>
+
                       <option value="codex">Codex</option>
-                      <option value="xai">xAI</option>
-                      <option value="kimi">Kimi</option>
+
                     </select>
                   </span>
                   <input id="account-auth-search" type="search" placeholder="Search auth files" autocomplete="off"  data-i18n-placeholder="ui.search_auth_files"/>
@@ -2628,9 +2706,9 @@
       </main>
     </div>
     <footer class="page-footer">
-      <span>© 2026 <a href="https://github.com/haowang02/cpa-plugin-key-billing" target="_blank" rel="noopener noreferrer">CPA Key Billing</a></span>
-      <span>&thinsp;·&thinsp;<a href="https://github.com/haowang02/cpa-plugin-key-billing/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="ui.license">License</a></span>
-      <span>&thinsp;·&thinsp;<span data-i18n="ui.version">Version</span>: v1.3.18</span>
+      <span>© 2026 <a href="https://github.com/darvintang/cpa-plugin-key-billing" target="_blank" rel="noopener noreferrer">CPA Key Billing Plus</a></span>
+      <span>&thinsp;·&thinsp;<a href="https://github.com/darvintang/cpa-plugin-key-billing/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="ui.license">License</a></span>
+      <span>&thinsp;·&thinsp;<span data-i18n="ui.version">Version</span>: v1.3.8.1</span>
     </footer>
 
     <div id="notice" class="notice" popover="manual"></div>
@@ -2694,8 +2772,9 @@
 
     <script>
       "use strict";
-      const PLUGIN_BASE = "/v0/management/plugins/cpa-key-billing";
-      const ACCOUNT_BASE = "/v0/resource/plugins/cpa-key-billing";
+      // The Plus routes match the host plugin ID; the credential hash namespace stays compatible with existing databases.
+      const PLUGIN_BASE = "/v0/management/plugins/cpa-key-billing-plus";
+      const ACCOUNT_BASE = "/v0/resource/plugins/cpa-key-billing-plus";
       const CALLER_SCOPE_SALT = "cli-proxy-api:caller-scope:v1\u0000";
       const DISPLAY_SEPARATOR = "\u2009·\u2009";
       const $ = (id) => document.getElementById(id);
@@ -2705,11 +2784,11 @@
 
       /* A same-origin iframe can borrow the panel's obfuscated management key. When
        * it is unavailable, the standalone login can use its own encrypted vault. */
-      const CREDENTIAL_DB = "cpa-key-billing-credentials";
+      const CREDENTIAL_DB = "cpa-key-billing-plus-credentials";
       const CREDENTIAL_STORE = "vault";
       const CREDENTIAL_KEY = "wrapping-key";
-      const SESSION_CREDENTIAL_PREFIX = "cpa-key-billing.session.v1.";
-      const VIEW_PREFERENCE_PREFIX = "cpa-key-billing.view.v1.";
+      const SESSION_CREDENTIAL_PREFIX = "cpa-key-billing-plus.session.v1.";
+      const VIEW_PREFERENCE_PREFIX = "cpa-key-billing-plus.view.v1.";
 
       function readPanelKey() {
         const fromStore = panelStoredValue("cli-proxy-auth")?.state?.managementKey;
@@ -2725,7 +2804,7 @@
       document.body.classList.toggle("embedded", embedded);
       const ADMIN_TAB_IDS = ["keys", "analysis", "request-events", "errors", "auth-files", "settings"];
       const ACCOUNT_TAB_IDS = ["subscription", "analysis", "request-events", "errors", "auth-files"];
-      const PAGE_ROUTE_KEY = "cpa-key-billing.route.v1." + (embedded ? "embedded" : "standalone");
+      const PAGE_ROUTE_KEY = "cpa-key-billing-plus.route.v1." + (embedded ? "embedded" : "standalone");
 
       function parsePageRoute(value) {
         const [role, tab] = value.split("/");
@@ -3106,6 +3185,7 @@
       async function fetchListPage(kind, account, params, previous = null) {
         const view = PAGED_LIST_VIEWS[kind];
         const query = new URLSearchParams({ ...params, ...previous?.cursor });
+        if (kind === "events") query.set("gpt_only", "true");
         const path = view.endpoint + "?" + query;
         const revision = keyDirectory.beginRead();
         const page = requireObject(await (account ? accountAPI(path) : plugin("GET", path)), view.label);
@@ -4066,7 +4146,8 @@
           const prices = requireArray(view.prices, catalog.label);
           catalog.value = {
             models,
-            prices: prices.map((price) => ({ ...price, in_models: models === null ? undefined : price.in_models }))
+            prices: prices.filter((price) => isGPTModel(price.model_id))
+              .map((price) => ({ ...price, in_models: models === null ? undefined : price.in_models }))
           };
           catalog.error = "";
         }
@@ -4123,7 +4204,7 @@
         const result = await api("GET", "/v1/models", null, { raw: true, key, auxiliaryCredential: !account });
         const rows = requireArray(result?.data, m("ui.cpa_model_list"));
         if (rows.some((row) => !row || typeof row.id !== "string" || !row.id.trim())) throw new UIError(m("ui.invalid_cpa_model_list"));
-        const models = [...new Set(rows.map((row) => row.id))].sort(compareModelId);
+        const models = [...new Set(rows.map((row) => row.id).filter(isGPTModel))].sort(compareModelId);
         const previous = resources[account ? "account" : "admin"].models.value;
         // The model list is the catalog's input. Preserve its identity when
         // discovery returns the same IDs, even if their server order changed.
@@ -4134,7 +4215,11 @@
         const models = resources[account ? "account" : "admin"].models.value;
         if (account && models === null) throw new UIError(m("ui.model_catalog_is_not_available_yet"));
         const prices = await fetchModelPrices(models || [], account);
-        return { models, prices: prices.map((price) => ({ ...price, in_models: models === null ? undefined : price.in_models })) };
+        return {
+          models,
+          prices: prices.filter((price) => isGPTModel(price.model_id))
+            .map((price) => ({ ...price, in_models: models === null ? undefined : price.in_models }))
+        };
       }
 
       function renderReferencePriceStatus() {
@@ -4511,6 +4596,7 @@
               tasks.push(list.load(reload));
             }
           }
+          if (!account && activeTab(false) === "settings") tasks.push(loadCredentialSettings());
           renderPage();
           try { await settleLoads(tasks); } catch (error) {
             // Hidden pages keep their errors for the next visit. Only an
@@ -4573,6 +4659,7 @@
         $("app").classList.remove("hidden");
         schedulePageTabLayout();
         await loadPage(false).catch(fail);
+        guard(() => plugin("POST", "/credential-task-session?origin=" + encodeURIComponent(location.origin)));
       }
 
       async function startAccount(key) {
@@ -5461,7 +5548,7 @@
         };
       }
 
-      const AUTH_QUOTA_CACHE_PREFIX = "cpa-key-billing.auth-quotas.v4.";
+      const AUTH_QUOTA_CACHE_PREFIX = "cpa-key-billing-plus.auth-quotas.v4.";
 
       function resetAuthQuotaMemory(account) {
         const role = account ? "account" : "admin";
@@ -5526,7 +5613,17 @@
 
       async function fetchAuthFiles(account) {
         const result = await (account ? accountAPI("/auth-files") : plugin("GET", "/auth-files"));
-        return requireArray(result?.files, m("ui.auth_files"));
+        const files = requireArray(result?.files, m("ui.auth_files")).filter((file) => file.category === "codex");
+        if (!account) {
+          const host = await api("GET", "/v0/management/auth-files");
+          const byIndex = new Map((host.files || []).map((file) => [file.auth_index, file]));
+          for (const file of files) {
+            const entry = byIndex.get(file.auth_index);
+            file.weight = entry?.weight ?? 1;
+            file.host_name = entry?.name || file.name;
+          }
+        }
+        return files;
       }
 
       function updateAuthFiles(account, files) {
@@ -5801,7 +5898,13 @@
                     el("div", { class: "auth-file-meta" }, meta.map((value) => el("span", { title: value, text: value })))
                   )
                 ),
-                el("div", { class: "auth-file-actions" }, el("span", { class: "tag " + statusClass, text: statusText }), refreshButton)
+                el(
+                  "div",
+                  { class: "auth-file-actions" },
+                  ...(account ? [] : [credentialWeightInput(file)]),
+                  el("span", { class: "tag " + statusClass, text: statusText }),
+                  refreshButton
+                )
               ),
               renderAuthFileQuota(file, account)
             );
@@ -7934,7 +8037,7 @@
           } while (result.cursor);
           const entries = result.page.entries;
           const stamp = new Date().toISOString().replaceAll(":", "-").slice(0, 19);
-          const name = "cpa-key-billing-" + (account ? "account-" : "") + view.tab + "-";
+          const name = "cpa-key-billing-plus-" + (account ? "account-" : "") + view.tab + "-";
           downloadCSV(name + stamp + ".csv", eventCSV(entries, kind, account));
           notify(m("ui.exported_value_value_records", { v0: int(entries.length), v1: view.label }));
         } finally {
@@ -8910,7 +9013,7 @@
         }
         $("price-reference-results").replaceChildren(el("div", { class: "price-reference-empty", text: m("ui.searching") }));
         try {
-          const result = await plugin("GET", "/prices/reference?q=" + encodeURIComponent(query) + "&limit=20");
+          const result = await plugin("GET", "/prices/reference?q=" + encodeURIComponent(query) + "&limit=20&gpt_only=true");
           if (request === priceReferenceRequest) renderPriceReferences(result.prices || []);
         } catch (err) {
           if (request === priceReferenceRequest) {
@@ -9251,6 +9354,98 @@
         };
       }
 
+      // Keep the shared policy separate from per-file host weights; saves use the existing management session.
+      function isGPTModel(id) { return /^gpt-/i.test(String(id || "").split("/").pop()); }
+      function syncCredentialSchedule() {
+        const daily = $("credential-task-mode").value === "daily";
+        $("credential-time-field").classList.toggle("hidden", !daily);
+        $("credential-interval-field").classList.toggle("hidden", daily);
+      }
+      async function loadCredentialSettings() {
+        $("credential-settings-fields").disabled = true;
+        const result = await plugin("GET", "/credential-settings");
+        const cfg = result.settings;
+        $("credential-max-concurrency").value = cfg.max_concurrency;
+        $("credential-task-enabled").checked = cfg.enabled;
+        $("credential-task-mode").value = cfg.mode;
+        $("credential-task-interval").value = cfg.interval_minutes;
+        $("credential-task-time").value = cfg.time_of_day;
+        $("credential-task-timezone").value = cfg.timezone;
+        $("credential-task-model").value = cfg.model;
+        $("credential-task-prompt").value = cfg.prompt;
+        $("credential-task-models").replaceChildren(
+          ...(resources.admin.models.value || []).filter(isGPTModel).map((model) => el("option", { value: model }))
+        );
+        setText(
+          $("credential-settings-status"),
+          result.error || (cfg.enabled ? m(result.running ? "ui.credential_task_running" : "ui.credential_task_waiting") : "")
+        );
+        syncCredentialSchedule();
+        $("credential-settings-fields").disabled = false;
+      }
+      $("credential-task-mode").onchange = syncCredentialSchedule;
+      $("credential-settings-form").onsubmit = (event) => {
+        event.preventDefault();
+        guard(async () => {
+          const cfg = {
+            max_concurrency: Number($("credential-max-concurrency").value),
+            enabled: $("credential-task-enabled").checked,
+            mode: $("credential-task-mode").value,
+            interval_minutes: Number($("credential-task-interval").value),
+            time_of_day: $("credential-task-time").value,
+            timezone: $("credential-task-timezone").value.trim(),
+            model: $("credential-task-model").value.trim(),
+            prompt: $("credential-task-prompt").value.trim()
+          };
+          $("credential-settings-save").disabled = true;
+          try {
+            const result = await plugin("PUT", "/credential-settings?origin=" + encodeURIComponent(location.origin), cfg);
+            setText($("credential-settings-status"), result.error || m("ui.saved"));
+          } finally { $("credential-settings-save").disabled = false; }
+        });
+      };
+      function credentialWeightInput(file) {
+        let timer, saving = false, pending = null;
+        const input = el("input", {
+          type: "number",
+          min: 0,
+          max: 1000000,
+          value: file.weight ?? 1,
+          "aria-label": m("ui.credential_call_weight"),
+          title: m("ui.credential_call_weight")
+        });
+        const status = el("span", { class: "credential-weight-status small muted", role: "status" });
+        const save = async () => {
+          const weight = pending;
+          if (saving || weight === null) return;
+          pending = null;
+          saving = true;
+          setText(status, m("ui.saving"));
+          try {
+            await api("PATCH", "/v0/management/auth-files/fields", { name: file.host_name, weight });
+            file.weight = weight;
+            setText(status, m("ui.saved"));
+          } catch (error) { setText(status, error.message); } finally {
+            saving = false;
+            if (pending !== null) await save();
+          }
+        };
+        input.oninput = () => {
+          clearTimeout(timer);
+          if (!input.checkValidity() || input.value === "") {
+            pending = null;
+            return;
+          }
+          pending = Number(input.value);
+          timer = setTimeout(save, 500);
+        };
+        input.onchange = () => {
+          clearTimeout(timer);
+          if (pending !== null) guard(save);
+        };
+        return el("label", { class: "credential-weight" }, el("span", { text: m("ui.credential_call_weight") }), input, status);
+      }
+
       const TABS = Array.from(document.querySelectorAll(".tabs button[data-tab]"));
       function setAdminTab(name) {
         if (editors.get($("route-picker"))?.saving) return;
@@ -9262,10 +9457,23 @@
           tab.classList.toggle("active", active);
           tab.setAttribute("aria-selected", String(active));
         }
-        const visible = selected === "settings" ? new Set(["plans", "routes", "prices", "plugin-logs"]) : new Set([selected]);
-        for (const section of ["keys", "analysis", "plans", "routes", "prices", "request-events", "errors", "auth-files", "plugin-logs"]) {
-          $("tab-" + section).classList.toggle("hidden", !visible.has(section));
-        }
+        const visible =
+          selected === "settings"
+            ? new Set(["credential-settings", "plans", "routes", "prices", "database", "plugin-logs"])
+            : new Set([selected]);
+        for (const section of [
+          "credential-settings",
+          "keys",
+          "analysis",
+          "plans",
+          "routes",
+          "prices",
+          "request-events",
+          "errors",
+          "auth-files",
+          "database",
+          "plugin-logs"
+        ]) { $("tab-" + section).classList.toggle("hidden", !visible.has(section)); }
         $("shared-time-filter").classList.toggle("hidden", !["analysis", "request-events", "errors"].includes(selected));
         $("events-export").classList.toggle("hidden", !["request-events", "errors"].includes(selected));
         if (!["analysis", "request-events", "errors"].includes(selected)) { closeSharedTimePopover(false); }
@@ -9412,6 +9620,17 @@
         saveChoice("admin", "plugin-log-level");
         guard(() => pagedList("logs").load(true));
       });
+      // Native form validation and server validation both enforce the retention floor.
+      $("database-cleanup-form").onsubmit = (event) => {
+        event.preventDefault();
+        const days = Number($("database-retention-days").value);
+        openActionDialog(m("ui.database_cleanup"), m("ui.database_cleanup_confirm", { v0: days }), undefined, async () => {
+          const result = await plugin("DELETE", "/database/request-events", { days });
+          setText($("database-cleanup-status"), m("ui.database_cleanup_done", { v0: result.cleared }));
+          await pagedList("events").load(true);
+          await pagedList("errors").load(true);
+        });
+      };
       $("plugin-logs-clear").onclick = () =>
         openActionDialog(
           m("ui.clear_all_plugin_logs"),

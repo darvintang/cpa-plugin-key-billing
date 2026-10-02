@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 const maxPendingRouteLogs = 4096

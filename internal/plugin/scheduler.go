@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 const maxPoolsPerKey = 256
@@ -29,6 +29,9 @@ type subsetScheduler struct {
 
 func candidateWeight(candidate SchedulerAuthCandidate) int64 {
 	raw := strings.TrimSpace(candidate.Attributes["weight"])
+	if raw == "" && candidate.Metadata["weight"] != nil {
+		raw = fmt.Sprint(candidate.Metadata["weight"])
+	}
 	if raw == "" {
 		return 1
 	}
@@ -150,7 +153,7 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	}
 	a.observeCandidates(req.Candidates)
 	scope := metadataString(req.Options.Metadata, MetadataCallerScope)
-	if scope == "" {
+	if scope == "" && a.credentialLimit() == 0 {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}
 	requestedModel := metadataString(req.Options.Metadata, MetadataRequestedModel)
@@ -161,7 +164,7 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	if decision.ConfigurationError != "" {
 		return ErrorEnvelope("routing_configuration_error", decision.ConfigurationError, http.StatusServiceUnavailable), nil
 	}
-	if !decision.RestrictsCredentials() {
+	if !decision.RestrictsCredentials() && a.credentialLimit() == 0 {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}
 	allowed := make([]SchedulerAuthCandidate, 0, len(req.Candidates))
@@ -173,12 +176,61 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	if len(allowed) == 0 {
 		return ErrorEnvelope("no_routed_credential", noRoutedCredentialMessage, http.StatusServiceUnavailable), nil
 	}
+	if a.credentialLimit() > 0 {
+		return a.pickCredentialWithLimit(req, scope, decision, allowed)
+	}
 	if len(allowed) == len(req.Candidates) {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}
 	id := a.scheduler.pick(scope, routingPoolKey(decision.Model, decision), allowed)
 	if id == "" {
 		return ErrorEnvelope("no_routed_credential", noRoutedCredentialMessage, http.StatusServiceUnavailable), nil
+	}
+	return OKEnvelope(SchedulerPickResponse{AuthID: id, Handled: true})
+}
+
+// Reserve under one lock, so simultaneous schedulers cannot exceed the shared per-credential ceiling.
+func (a *App) pickCredentialWithLimit(req SchedulerPickRequest, scope string, decision billing.RoutingDecision, candidates []SchedulerAuthCandidate) ([]byte, error) {
+	c := &a.controls
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	requestID := req.Options.Headers.Get(credentialRequestHeader)
+	previous, exists := c.active[requestID]
+	if requestID == "" || !exists {
+		return ErrorEnvelope("invalid_request_id", "Request lifecycle identity is required", 503), nil
+	}
+	available := make([]SchedulerAuthCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		active := c.counts[candidate.ID]
+		if candidate.ID == previous {
+			active--
+		}
+		if candidate.ID != "" && candidateWeight(candidate) > 0 && (c.settings.MaxConcurrency == 0 || active < c.settings.MaxConcurrency) {
+			available = append(available, candidate)
+		}
+	}
+	if len(available) == 0 {
+		return ErrorEnvelope("credential_concurrency_limit", "All eligible credentials are at their concurrency limit", 429), nil
+	}
+	priority := available[0].Priority
+	for _, candidate := range available {
+		if candidate.Priority > priority {
+			priority = candidate.Priority
+		}
+	}
+	eligible := available[:0]
+	for _, candidate := range available {
+		if candidate.Priority == priority {
+			eligible = append(eligible, candidate)
+		}
+	}
+	id := a.scheduler.pick(scope, routingPoolKey(decision.Model, decision), eligible)
+	if previous != id {
+		if previous != "" {
+			c.counts[previous]--
+		}
+		c.counts[id]++
+		c.active[requestID] = id
 	}
 	return OKEnvelope(SchedulerPickResponse{AuthID: id, Handled: true})
 }

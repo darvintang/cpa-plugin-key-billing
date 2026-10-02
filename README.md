@@ -1,15 +1,29 @@
 <div align="center">
-  <h1>CPA Key Billing</h1>
+  <h1>CPA Key Billing Plus</h1>
   <p><strong><a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a> 下游 API Key 计费与订阅额度插件。</strong></p>
   <p>
-    <a href="https://github.com/haowang02/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/haowang02/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
-    <a href="https://github.com/haowang02/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/haowang02/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
+    <a href="https://github.com/darvintang/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/darvintang/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
+    <a href="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
     <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platforms: Windows, macOS, and Linux">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
   </p>
   <p><a href="./README.en.md">English</a> · <strong>简体中文</strong></p>
 </div>
 <img src="images/example.png" alt="cpa-plugin-key-billing example" width="100%" />
+
+## 项目来源
+
+CPA Key Billing Plus 基于 [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) 的 **1.3.8 版本**（基准提交 [`78150bdc1`](https://github.com/haowang02/cpa-plugin-key-billing/commit/78150bdc10ce28afde4b3539f1be48ae2bead995)）开发，由 [Darvin（darvintang）](https://github.com/darvintang) 在原项目基础上维护和扩展。本仓库为衍生版本，上游原作者为 Hao Wang（haowang02）。
+
+## Plus 功能
+
+- 模型定价和请求事件页面仅显示 `gpt-*` 模型；认证文件页面仅显示 Codex。筛选不删除历史数据。
+- 认证文件卡片在启用状态前提供调用权重输入，输入完成后自动保存到宿主认证文件。
+- 设置页统一配置每个凭证的最大并发数（`0` 表示不限），不提供逐文件覆盖。
+- 条件任务统一作用于启用的 Codex 凭证，支持自填分钟间隔、每日指定时间和时区；需要填写 GPT 模型与测试提示词后开启。测试会消耗上游额度，执行结果记录在插件日志中。
+- 定时执行程序 `plugins/cpa-key-billing-plus-worker`（Windows 为 `.exe`）随人工安装脚本安装；商店只安装动态库，定时任务还需安装对应 Release 的 worker 文件并授予执行权限。
+- 定时程序使用当前管理会话，关闭浏览器后继续运行；CPA 重启后登录管理页面恢复。任务配置不保存管理密钥。
+- 权重自动保存需要支持 `/v0/management/auth-files/fields` 的宿主，建议 CLIProxyAPI `7.2.154` 或更新版本。
 
 ## 功能特性
 
@@ -52,22 +66,34 @@ flowchart TB
 
 ## 安装
 
+在宿主配置中添加本仓库的插件商店源：
+
+```yaml
+plugins:
+  store-sources:
+    - https://raw.githubusercontent.com/darvintang/cpa-plugin-key-billing/main/registry.json
+```
+
+`registry.json` 与插件版本保持一致；商店安装需要本仓库先发布包含对应平台 ZIP 和 `checksums.txt` 的 Release。
+
+从原插件迁移时，请备份数据库，将配置键与动态库改为 `cpa-key-billing-plus`，并让 `state_file` 显式指向原数据库。已有凭证路由绑定继续有效。
+
 ### 商店安装
 
-CPA 管理面板（CPAMC 或 CPAMP）插件商店搜索 `cpa-key-billing`。
+CPA 管理面板（CPAMC 或 CPAMP）插件商店搜索 `cpa-key-billing-plus`。
 
 ### 人工安装
 
 在 CLIProxyAPI 根目录运行。macOS 和 Linux 使用：
 
 ```sh
-curl -LsSf https://raw.githubusercontent.com/haowang02/cpa-plugin-key-billing/main/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/darvintang/cpa-plugin-key-billing/main/install.sh | sh
 ```
 
 Windows 请先停止 CLIProxyAPI，再在 PowerShell 中运行：
 
 ```powershell
-irm https://raw.githubusercontent.com/haowang02/cpa-plugin-key-billing/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/darvintang/cpa-plugin-key-billing/main/install.ps1 | iex
 ```
 
 安装脚本会将插件安装到当前目录的 `plugins/`。安装或升级完成后需要重启 CLIProxyAPI。
@@ -79,13 +105,13 @@ plugins:
   enabled: true
   dir: "plugins"
   configs:
-    cpa-key-billing:
+    cpa-key-billing-plus:
       enabled: true
       debug: false # 是否记录 debug 日志，例如路由日志、匹配参考价日志
       codex_fast_mode_billing: false # 开启后，Codex 的 priority 请求按 2.5 倍计费
       mask_api_key_view_emails: false # 对 API Key 查询页面返回的邮箱进行掩码脱敏
       allow_api_key_quota_reset: false # 允许 API Key 用户重置可访问的 Codex 认证文件额度，消耗上游重置次数
-      state_file: "plugins/cpa-key-billing-state-v1.db"
+      state_file: "plugins/cpa-key-billing-plus-state-v1.db"
 ```
 
 > [!WARNING]
@@ -94,20 +120,20 @@ plugins:
 > - v1.0.0 至最新版本的数据库文件支持自动迁移。
 > - v0.8.4 及更早版本的 JSON 或 SQLite 数据文件不支持迁移，请将 `state_file` 指向新文件。
 
-重启 CLIProxyAPI 后，在管理中心打开「API Key Billing」。确认模型定价后，创建订阅计划并绑定需要限制的 API Key。
+重启 CLIProxyAPI 后，在管理中心打开「API Key Billing Plus」。确认模型定价后，创建订阅计划并绑定需要限制的 API Key。
 
 ## 页面访问
 
-管理员可以从 CLIProxyAPI 管理中心的「API Key Billing」菜单进入，也可以直接打开：
+管理员可以从 CLIProxyAPI 管理中心的「API Key Billing Plus」菜单进入，也可以直接打开：
 
 ```text
-http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing/ui
+http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing-plus/ui
 ```
 
 普通用户使用自己的 API Key 查询订阅额度和用量时，直接打开：
 
 ```text
-http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing/ui#account
+http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing-plus/ui#account
 ```
 
 ## 计费与订阅规则
@@ -156,6 +182,16 @@ flowchart TB
 | 已绑定的路由规则不存在或损坏 | `503` | `server_error` | `routing_configuration_error` |
 | 模型未定价 | `503` | `cpa_key_billing_error` | `model_price_error` |
 
+## 版权与许可
+
+本项目继续使用 [MIT License](./LICENSE)，保留上游版权及完整许可声明：
+
+- 原始项目：Copyright (c) 2026 Hao Wang
+- Plus 版本新增与修改部分：Copyright (c) 2026 Darvin (darvintang)
+
+新增版权声明仅适用于本版本的原创贡献，不替代上游作者对原始代码的版权。
+
 ## 致谢
 
+- [Hao Wang（haowang02）](https://github.com/haowang02) 及 [cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) 的贡献者：感谢原始插件的开发与开源，为 Plus 版本提供了基础。
 - [LINUX DO](https://linux.do/) - 新的理想型社区

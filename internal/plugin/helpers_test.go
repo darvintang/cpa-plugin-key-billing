@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func billOneRequest(t *testing.T, app *App, apiKey string, outputTokens int64) {

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func (d *DB) UpsertPrice(price billing.CustomPrice) error {

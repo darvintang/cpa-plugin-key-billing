@@ -10,8 +10,8 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 const (
@@ -95,7 +95,7 @@ func (a *App) listRequestEvents(req ManagementRequest, access viewAccess) Manage
 		return viewJSON(access, http.StatusOK, billing.RequestEventView{Entries: []billing.RequestEventRow{}})
 	}
 	query := billing.RequestEventQuery{
-		Scope: access.Scope, Model: strings.TrimSpace(req.Query.Get("model")),
+		Scope: access.Scope, Model: strings.TrimSpace(req.Query.Get("model")), GPTOnly: req.Query.Get("gpt_only") == "true",
 		Source: strings.TrimSpace(req.Query.Get("source")), Executor: strings.TrimSpace(req.Query.Get("executor")),
 		Provider: strings.TrimSpace(req.Query.Get("provider")),
 		Limit:    defaultEventPageSize,

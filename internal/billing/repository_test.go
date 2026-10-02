@@ -232,3 +232,13 @@ func (r *memoryRepository) EventKeys(from, to, since time.Time) ([]EventKey, err
 	}
 	return keys, nil
 }
+
+func (r *memoryRepository) DeleteRequestEventsBefore(cutoff time.Time) (int, error) {
+	if r.fail != nil {
+		return 0, r.fail
+	}
+	before := len(r.requestEvents) + len(r.requestErrors)
+	r.requestEvents = slices.DeleteFunc(r.requestEvents, func(e RequestEvent) bool { return e.At.Before(cutoff) })
+	r.requestErrors = slices.DeleteFunc(r.requestErrors, func(e RequestErrorEvent) bool { return e.Event.At.Before(cutoff) })
+	return before - len(r.requestEvents) - len(r.requestErrors), nil
+}

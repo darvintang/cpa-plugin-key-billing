@@ -1,5 +1,5 @@
 {
-  "name": "cpa-key-billing-dev-scripts",
+  "name": "cpa-key-billing-plus-dev-scripts",
   "private": true,
   "type": "module",
   "engines": { "node": ">=20" },

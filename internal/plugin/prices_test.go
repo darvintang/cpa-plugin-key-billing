@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func TestPriceAdmissionAndDeleteWithoutInventory(t *testing.T) {

@@ -130,6 +130,7 @@ type RouteView struct {
 	FullyUnrestrictedKeys int `json:"fully_unrestricted_keys"`
 }
 
+// Keep the historical hash namespace so existing credential bindings survive the Plus rename.
 func CredentialFingerprint(rawID string) string {
 	h := sha256.New()
 	_, _ = h.Write([]byte("cpa-key-billing:credential:v1\x00"))

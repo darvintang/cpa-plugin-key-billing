@@ -2,14 +2,14 @@
 
 set -eu
 
-repository="haowang02/cpa-plugin-key-billing"
-plugin_name="cpa-key-billing"
+repository="darvintang/cpa-plugin-key-billing"
+plugin_name="cpa-key-billing-plus"
 plugin_dir="$(pwd)/plugins"
 tmp_dir=""
 staged_file=""
 
 fail() {
-  printf 'cpa-key-billing: %s\n' "$*" >&2
+  printf 'cpa-key-billing-plus: %s\n' "$*" >&2
   exit 1
 }
 
@@ -97,6 +97,16 @@ actual_checksum="$(checksum_file "$archive")"
 [ "$actual_checksum" = "$expected_checksum" ] \
   || fail "download checksum mismatch"
 
+# The independently checksummed worker is required only for scheduled tests.
+worker_asset="${plugin_name}-worker_${version}_${target_os}_${target_arch}"
+worker_file="${plugin_name}-worker"
+curl -fsSL --retry 3 --connect-timeout 15 -o "${tmp_dir}/${worker_file}" \
+  "https://github.com/${repository}/releases/download/${release_tag}/${worker_asset}" \
+  || fail "failed to download task worker"
+worker_checksum="$(awk -v name="$worker_asset" '$2 == name || $2 == "*" name {print $1; exit}' "$checksums")"
+[ -n "$worker_checksum" ] && [ "$(checksum_file "${tmp_dir}/${worker_file}")" = "$worker_checksum" ] \
+  || fail "task worker checksum mismatch"
+
 tar -xzf "$archive" -C "$tmp_dir" "$plugin_file" \
   || fail "release archive does not contain ${plugin_file}"
 [ -s "${tmp_dir}/${plugin_file}" ] || fail "release archive contains an empty ${plugin_file}"
@@ -107,6 +117,9 @@ cp "${tmp_dir}/${plugin_file}" "$staged_file" || fail "failed to write to ${plug
 chmod 0755 "$staged_file"
 mv -f "$staged_file" "${plugin_dir}/${plugin_file}"
 staged_file=""
+cp "${tmp_dir}/${worker_file}" "${plugin_dir}/.${worker_file}.tmp.$$"
+chmod 0755 "${plugin_dir}/.${worker_file}.tmp.$$"
+mv -f "${plugin_dir}/.${worker_file}.tmp.$$" "${plugin_dir}/${worker_file}"
 
 printf 'Installed: %s\n' "${plugin_dir}/${plugin_file}"
 printf 'Restart CLIProxyAPI to load the plugin.\n'

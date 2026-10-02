@@ -13,17 +13,17 @@ const (
 	SchemaVersion uint32 = 4
 )
 
-// Plugin identity. PluginID doubles as the dynamic library file name, the
-// `plugins.configs` key, and the Management/resource route segment.
+// Keep the Plus identity aligned with registry.json, release libraries,
+// `plugins.configs` keys, and Management/resource route segments.
 const (
-	PluginID   = "cpa-key-billing"
-	PluginName = "cpa-key-billing"
-	Version    = "1.3.18"
+	PluginID   = "cpa-key-billing-plus"
+	PluginName = "cpa-key-billing-plus"
+	Version    = "1.3.8.1"
 
-	MenuLabel       = "API Key Billing"
+	MenuLabel       = "API Key Billing Plus"
 	MenuDescription = "Manage downstream API key routing, billing, concurrency limits, subscription quotas, and usage"
 
-	GitHubRepository = "https://github.com/haowang02/cpa-plugin-key-billing"
+	GitHubRepository = "https://github.com/darvintang/cpa-plugin-key-billing"
 )
 
 const (
@@ -105,15 +105,18 @@ type Capabilities struct {
 type SchedulerPickRequest struct {
 	Model   string `json:"Model"`
 	Options struct {
+		Headers  http.Header
 		Metadata map[string]any `json:"Metadata"`
 	} `json:"Options"`
 	Candidates []SchedulerAuthCandidate `json:"Candidates"`
 }
 
 type SchedulerAuthCandidate struct {
-	ID         string            `json:"ID"`
-	Provider   string            `json:"Provider"`
-	Status     string            `json:"Status"`
+	ID         string `json:"ID"`
+	Provider   string `json:"Provider"`
+	Status     string `json:"Status"`
+	Priority   int
+	Metadata   map[string]any
 	Attributes map[string]string `json:"Attributes"`
 }
 
@@ -130,6 +133,7 @@ type RequestCompletion struct {
 }
 
 type RequestInterceptRequest struct {
+	Headers        http.Header
 	RequestID      string         `json:"RequestID"`
 	SourceFormat   string         `json:"SourceFormat"`
 	Model          string         `json:"Model"`
@@ -138,6 +142,8 @@ type RequestInterceptRequest struct {
 }
 
 type RequestInterceptResponse struct {
+	Headers         http.Header
+	ClearHeaders    []string
 	Terminate       bool        `json:"Terminate,omitempty"`
 	StatusCode      int         `json:"StatusCode,omitempty"`
 	ResponseHeaders http.Header `json:"ResponseHeaders,omitempty"`

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func restrictApp(t *testing.T, rule billing.RouteRule) *App {

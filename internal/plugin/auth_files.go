@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 const (

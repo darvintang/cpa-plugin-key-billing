@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func TestUIIncludesBothLanguagesWithoutExternalTranslationResources(t *testing.T) {

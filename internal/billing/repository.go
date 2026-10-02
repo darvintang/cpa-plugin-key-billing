@@ -17,6 +17,7 @@ type Repository interface {
 	AppendPluginLog(entry PluginLog, cutoff time.Time) error
 	PluginLogsPage(query PluginLogQuery) (PluginLogPage, error)
 	ClearPluginLogs() (int, error)
+	DeleteRequestEventsBefore(cutoff time.Time) (int, error)
 
 	Close() error
 }

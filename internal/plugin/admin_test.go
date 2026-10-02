@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"cpa-key-billing/internal/billing"
+	"cpa-key-billing-plus/internal/billing"
 )
 
 func callManagement(t *testing.T, app *App, method, suffix string, query url.Values, body any) ManagementResponse {
@@ -839,4 +839,19 @@ func TestLargeRouteBindingsSurviveReload(t *testing.T) {
 	if !ok || len(route.Rule.Models) != len(models) {
 		t.Fatal("route models were lost after reload")
 	}
+}
+
+// Reject unsafe retention values even when callers bypass HTML validation.
+func TestDatabaseCleanupRetention(t *testing.T) {
+	app := newConfiguredApp(t)
+	for _, body := range []string{`{}`, `{"days":-1}`, `{"days":0}`, `{"days":3}`, `{"days":3.5}`, `{"days":36501}`, `{"days":4,"all":true}`} {
+		response := callManagement(t, app, http.MethodDelete, "/database/request-events", nil, body)
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: status %d", body, response.StatusCode)
+		}
+	}
+	var result struct {
+		Cleared int `json:"cleared"`
+	}
+	callOK(t, app, http.MethodDelete, "/database/request-events", nil, map[string]int{"days": 4}, http.StatusOK, &result)
 }

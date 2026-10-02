@@ -3,7 +3,7 @@ package billing
 import (
 	"errors"
 
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 type ErrorKind string

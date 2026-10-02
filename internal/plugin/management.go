@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 const (
@@ -52,6 +52,11 @@ type managementEndpoint struct {
 }
 
 var managementEndpoints = []managementEndpoint{
+	{http.MethodPost, "/credential-task-session", "Resume tasks with management session", (*App).credentialSettings},
+	{http.MethodPost, "/credential-task-result", "Record scheduled test result", (*App).credentialTaskResult},
+	{http.MethodGet, "/credential-settings", "View shared credential settings", (*App).credentialSettings},
+	{http.MethodPut, "/credential-settings", "Save shared credential settings", (*App).credentialSettings},
+	{http.MethodPost, "/credential-task-slot", "Reserve or release a Codex test slot", (*App).credentialTaskSlot},
 	{http.MethodGet, routeKeys, "View API key status", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"keys": a.keyRows()})
 	}},
@@ -90,6 +95,7 @@ var managementEndpoints = []managementEndpoint{
 		return a.listRequestErrors(req, viewAccess{})
 	}},
 	{http.MethodGet, routeAnalysis, "View usage distribution", func(a *App, req ManagementRequest) ManagementResponse { return a.analysis(req, viewAccess{}) }},
+	{http.MethodDelete, "/database/request-events", "Clean up old request events", (*App).cleanupRequestEvents},
 	{http.MethodGet, routePluginLogs, "List plugin logs with pagination", (*App).listPluginLogs},
 	{http.MethodDelete, routePluginLogs, "Clear plugin logs", func(a *App, _ ManagementRequest) ManagementResponse { return a.clearPluginLogs() }},
 	{http.MethodGet, routeAuthFiles, "View auth files", func(a *App, _ ManagementRequest) ManagementResponse { return a.authFiles(viewAccess{}) }},

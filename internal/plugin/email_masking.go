@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 var viewEmailToken = regexp.MustCompile(`[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}\-]+(?:\.[\p{L}\p{N}\-]+)*`)

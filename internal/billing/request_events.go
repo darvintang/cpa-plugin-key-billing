@@ -45,6 +45,8 @@ type RequestEventRow struct {
 
 // RequestEventQuery selects one filtered page of request events.
 type RequestEventQuery struct {
+	// GPTOnly filters page counts and options without removing historical rows.
+	GPTOnly bool
 	// Scope is an internal authorization boundary. Callers never select it from
 	// a query parameter: account endpoints derive it from the presented API key.
 	Scope          string
@@ -113,5 +115,15 @@ type EventKey struct {
 func (s *Store) EventKeys(from, to time.Time) ([]EventKey, error) {
 	return withRepository(s, func(repo Repository) ([]EventKey, error) {
 		return repo.EventKeys(from, to, s.Now().Add(-RequestEventRetention))
+	})
+}
+
+// Cleanup uses the server clock and never modifies accumulated balances or quotas.
+func (s *Store) CleanupRequestEvents(days int) (int, error) {
+	if days < 4 || days > 36500 {
+		return 0, &Error{Kind: KindInvalid, Msg: "Retention days must be an integer between 4 and 36500"}
+	}
+	return withRepository(s, func(repo Repository) (int, error) {
+		return repo.DeleteRequestEventsBefore(s.Now().Add(-time.Duration(days) * 24 * time.Hour))
 	})
 }

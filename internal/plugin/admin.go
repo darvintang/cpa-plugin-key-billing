@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/messages"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/messages"
 )
 
 type keyRow struct {
@@ -354,4 +354,19 @@ func decodeStrict(body []byte, target any) error {
 		return &billing.Error{Kind: billing.KindInvalid, Msg: "The request body must contain exactly one JSON value"}
 	}
 	return nil
+}
+
+// Only the management endpoint exposes destructive event maintenance.
+func (a *App) cleanupRequestEvents(req ManagementRequest) ManagementResponse {
+	var input struct {
+		Days int `json:"days"`
+	}
+	if err := decodeStrict(req.Body, &input); err != nil {
+		return errorResponse(err)
+	}
+	cleared, err := a.store.CleanupRequestEvents(input.Days)
+	if err != nil {
+		return errorResponse(err)
+	}
+	return JSONResponse(http.StatusOK, map[string]any{"cleared": cleared})
 }

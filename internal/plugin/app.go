@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"sync"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/sqlite"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/sqlite"
 )
 
 type App struct {
+	controls              credentialControls
 	store                 *billing.Store
 	hostCaller            HostCaller
 	admissionsMu          sync.Mutex
@@ -95,6 +96,9 @@ func (a *App) Shutdown() {
 	if a == nil || a.store == nil {
 		return
 	}
+	a.controls.mu.Lock()
+	a.controls.stopWorker()
+	a.controls.mu.Unlock()
 	a.store.Close()
 }
 
@@ -108,6 +112,9 @@ func (a *App) configure(raw []byte) error {
 	cfg, errDecode := billing.DecodeConfig(req.ConfigYAML)
 	if errDecode != nil {
 		return errDecode
+	}
+	if err := a.controls.configure(cfg.StateFile + ".settings.json"); err != nil {
+		return err
 	}
 	if errConfigure := func() error {
 		a.routingMu.Lock()

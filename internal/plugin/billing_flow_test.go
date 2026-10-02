@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"cpa-key-billing/internal/billing"
-	"cpa-key-billing/internal/sqlite"
+	"cpa-key-billing-plus/internal/billing"
+	"cpa-key-billing-plus/internal/sqlite"
 )
 
 const flowModel = "gpt-5.5"

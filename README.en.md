@@ -1,15 +1,29 @@
 <div align="center">
-  <h1>CPA Key Billing</h1>
+  <h1>CPA Key Billing Plus</h1>
   <p><strong>Per-key billing, subscription quotas, and routing for <a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a>.</strong></p>
   <p>
-    <a href="https://github.com/haowang02/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/haowang02/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
-    <a href="https://github.com/haowang02/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/haowang02/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
+    <a href="https://github.com/darvintang/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/darvintang/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
+    <a href="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
     <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platforms: Windows, macOS, and Linux">
     <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
   </p>
   <p><strong>English</strong> · <a href="./README.md">简体中文</a></p>
 </div>
-<img src="images/example.png" alt="CPA Key Billing dashboard" width="100%" />
+<img src="images/example.png" alt="CPA Key Billing Plus dashboard" width="100%" />
+
+## Project origin
+
+CPA Key Billing Plus is derived from [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) **version 1.3.8** (base commit [`78150bdc1`](https://github.com/haowang02/cpa-plugin-key-billing/commit/78150bdc10ce28afde4b3539f1be48ae2bead995)), originally authored by Hao Wang (haowang02). This repository is a derivative version maintained and extended by [Darvin (darvintang)](https://github.com/darvintang).
+
+## Plus features
+
+- Pricing and request-event pages show only `gpt-*` models; the auth-file page shows only Codex. Historical data is preserved.
+- Credential call weights appear before enabled status and save automatically through the host auth-file API.
+- Settings apply one concurrency ceiling per credential (`0` means unlimited), without per-file overrides.
+- One test schedule applies to enabled Codex credentials: custom minute intervals or daily wall-clock times with an explicit time zone. Set a GPT model and prompt before enabling tests. Tests consume upstream quota and report results in plugin logs.
+- Manual installers include `plugins/cpa-key-billing-plus-worker` (`.exe` on Windows). Store installations only install the library; scheduled tests additionally require the matching Release worker executable.
+- The external worker continues after the browser closes, using the current management session. Log in again after CPA restarts to resume. Task settings never persist management keys.
+- Weight autosave requires the host auth-file fields endpoint; CLIProxyAPI `7.2.154` or newer is recommended.
 
 ## Features
 
@@ -52,28 +66,40 @@ flowchart TB
 
 ## Installation
 
+Add this repository as a plugin store source in the host configuration:
+
+```yaml
+plugins:
+  store-sources:
+    - https://raw.githubusercontent.com/darvintang/cpa-plugin-key-billing/main/registry.json
+```
+
+Keep `registry.json` aligned with the plugin version. Store installation requires a Release in this repository containing the platform ZIP archives and `checksums.txt`.
+
+When migrating from the original plugin, back up the database, rename the configuration key and library to `cpa-key-billing-plus`, and explicitly point `state_file` to the original database. Existing credential route bindings remain valid.
+
 Run the installer from your CLIProxyAPI directory.
 
 On macOS or Linux:
 
 ```sh
-curl -LsSf https://raw.githubusercontent.com/haowang02/cpa-plugin-key-billing/main/install.sh | sh
+curl -LsSf https://raw.githubusercontent.com/darvintang/cpa-plugin-key-billing/main/install.sh | sh
 ```
 
 On Windows, stop CLIProxyAPI first, then run this in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/haowang02/cpa-plugin-key-billing/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/darvintang/cpa-plugin-key-billing/main/install.ps1 | iex
 ```
 
 The installer places the plugin in `plugins/` under the current directory. Restart CLIProxyAPI after installing or upgrading.
 
-For manual installation, download the archive for your platform from [Releases](https://github.com/haowang02/cpa-plugin-key-billing/releases/latest), then extract the library into CLIProxyAPI’s `plugins/` directory:
+For manual installation, download the archive for your platform from [Releases](https://github.com/darvintang/cpa-plugin-key-billing/releases/latest), then extract the library into CLIProxyAPI’s `plugins/` directory:
 
 ```text
-plugins/cpa-key-billing.so       # Linux
-plugins/cpa-key-billing.dylib    # macOS
-plugins/cpa-key-billing.dll      # Windows
+plugins/cpa-key-billing-plus.so       # Linux
+plugins/cpa-key-billing-plus.dylib    # macOS
+plugins/cpa-key-billing-plus.dll      # Windows
 ```
 
 ## Configuration
@@ -85,13 +111,13 @@ plugins:
   enabled: true
   dir: "plugins"
   configs:
-    cpa-key-billing:
+    cpa-key-billing-plus:
       enabled: true
       debug: false # Include routing and reference-price matching in debug logs
       codex_fast_mode_billing: false # Charge 2.5× for Codex priority requests
       mask_api_key_view_emails: false # Mask email addresses in API key account views
       allow_api_key_quota_reset: false # Allow API key users to reset accessible Codex auth file quotas using upstream reset credits
-      state_file: "plugins/cpa-key-billing-state-v1.db"
+      state_file: "plugins/cpa-key-billing-plus-state-v1.db"
 ```
 
 > [!WARNING]
@@ -100,20 +126,20 @@ plugins:
 > - Databases created by v1.0.0 or later are migrated automatically.
 > - JSON and SQLite files from v0.8.4 or earlier cannot be migrated. Point `state_file` to a new file instead.
 
-Restart CLIProxyAPI and open **API Key Billing** in the management panel. Review model pricing, create subscription plans, and bind the API keys whose quotas you want to enforce.
+Restart CLIProxyAPI and open **API Key Billing Plus** in the management panel. Review model pricing, create subscription plans, and bind the API keys whose quotas you want to enforce.
 
 ## Access
 
 Administrators can open the plugin from the management panel or visit it directly:
 
 ```text
-http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-key-billing/ui
+http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-key-billing-plus/ui
 ```
 
 API key holders can use their own key to view their subscription and usage:
 
 ```text
-http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-key-billing/ui#account
+http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-key-billing-plus/ui#account
 ```
 
 ## Billing and quotas
@@ -166,6 +192,16 @@ flowchart TB
 | A bound routing rule is missing or invalid | `503` | `server_error` | `routing_configuration_error` |
 | Model has no price | `503` | `cpa_key_billing_error` | `model_price_error` |
 
+## Copyright and license
+
+This project remains licensed under the [MIT License](./LICENSE), preserving the upstream copyright notice and the full license terms:
+
+- Original project: Copyright (c) 2026 Hao Wang
+- Additions and modifications in the Plus version: Copyright (c) 2026 Darvin (darvintang)
+
+The additional copyright notice covers only original contributions to this version and does not replace the upstream author's copyright in the original code.
+
 ## Acknowledgments
 
+- [Hao Wang (haowang02)](https://github.com/haowang02) and the contributors to [cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing), for developing and open-sourcing the original plugin on which Plus is based.
 - [LINUX DO](https://linux.do/) community.

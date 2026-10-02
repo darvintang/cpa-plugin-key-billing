@@ -34,7 +34,8 @@ test("visible HTML copy is localized, with English fallbacks matching the catalo
     }
     if (node.nodeName === "#text" && /[a-zA-Z]/.test(node.value) && !translated) {
       const text = node.value.trim();
-      assert.ok(technicalLabels.has(text) || /^:\s*v\d+\.\d+\.\d+$/.test(text), `Untranslated HTML text: ${text}`);
+      // Plus releases may append a fourth numeric revision to the upstream version.
+      assert.ok(technicalLabels.has(text) || /^:\s*v\d+\.\d+\.\d+(?:\.\d+)?$/.test(text), `Untranslated HTML text: ${text}`);
     }
     for (const attr of ["title", "aria-label", "placeholder"]) {
       if (!attrs[attr]) continue;

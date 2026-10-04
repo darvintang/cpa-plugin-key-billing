@@ -12,6 +12,35 @@ import (
 	"time"
 )
 
+// Restart and batch duration must not append another interval to the persisted start time.
+func TestIntervalNextRun(t *testing.T) {
+	cfg := tasksettings.Default()
+	cfg.IntervalMinutes = 5
+	last := time.Date(2026, 10, 4, 1, 16, 32, 0, time.UTC)
+	for _, tt := range []struct {
+		name string
+		last time.Time
+		now  time.Time
+		want time.Time
+	}{
+		{"first run", time.Time{}, last, last.Add(5 * time.Minute)},
+		{"restart before due", last, last.Add(2 * time.Minute), last.Add(5 * time.Minute)},
+		{"restart overdue", last, last.Add(5*time.Minute + 11*time.Second), last.Add(5*time.Minute + 11*time.Second)},
+		{"batch duration", last, last.Add(time.Minute), last.Add(5 * time.Minute)},
+		{"long batch", last, last.Add(12 * time.Minute), last.Add(12 * time.Minute)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := nextRun(cfg, tt.last, tt.now); !got.Equal(tt.want) {
+				t.Fatalf("next=%v want=%v", got, tt.want)
+			}
+		})
+	}
+	cfg.Mode = "daily"
+	if got := nextRun(cfg, last, last.Add(time.Hour)); !got.Equal(cfg.Next(last.Add(time.Hour))) {
+		t.Fatal("daily schedule replayed a missed run")
+	}
+}
+
 func TestProbeResponseCompletion(t *testing.T) {
 	for _, tt := range []struct {
 		body    string

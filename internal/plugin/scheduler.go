@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"cpa-key-billing-plus/internal/billing"
 )
@@ -164,7 +165,7 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	if decision.ConfigurationError != "" {
 		return ErrorEnvelope("routing_configuration_error", decision.ConfigurationError, http.StatusServiceUnavailable), nil
 	}
-	if !decision.RestrictsCredentials() && a.credentialLimit() == 0 {
+	if !decision.RestrictsCredentials() && a.credentialLimit() == 0 && credentialSessionKey(req, scope) == "" {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}
 	allowed := make([]SchedulerAuthCandidate, 0, len(req.Candidates))
@@ -176,28 +177,49 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	if len(allowed) == 0 {
 		return ErrorEnvelope("no_routed_credential", noRoutedCredentialMessage, http.StatusServiceUnavailable), nil
 	}
-	if a.credentialLimit() > 0 {
+	if a.credentialLimit() > 0 || credentialSessionKey(req, scope) != "" {
 		return a.pickCredentialWithLimit(req, scope, decision, allowed)
 	}
 	if len(allowed) == len(req.Candidates) {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}
-	id := a.scheduler.pick(scope, routingPoolKey(decision.Model, decision), allowed)
+	id := a.scheduler.pick(scope, routingPoolKey(decision.Model, decision), highestPriorityCandidates(allowed))
 	if id == "" {
 		return ErrorEnvelope("no_routed_credential", noRoutedCredentialMessage, http.StatusServiceUnavailable), nil
 	}
 	return OKEnvelope(SchedulerPickResponse{AuthID: id, Handled: true})
 }
 
-// Reserve under one lock, so simultaneous schedulers cannot exceed the shared per-credential ceiling.
+// Reserve and bind under one lock so concurrent first requests cannot create competing bindings.
 func (a *App) pickCredentialWithLimit(req SchedulerPickRequest, scope string, decision billing.RoutingDecision, candidates []SchedulerAuthCandidate) ([]byte, error) {
 	c := &a.controls
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	requestID := req.Options.Headers.Get(credentialRequestHeader)
 	previous, exists := c.active[requestID]
-	if requestID == "" || !exists {
+	limit := c.settings.MaxConcurrency
+	if limit > 0 && (requestID == "" || !exists) {
 		return ErrorEnvelope("invalid_request_id", "Request lifecycle identity is required", 503), nil
+	}
+	now := time.Now()
+	key := credentialSessionKey(req, scope)
+	binding := c.sessions[key]
+	sticky := false
+	if key != "" && binding.Expires.After(now) {
+		for _, candidate := range candidates {
+			if candidate.ID == binding.AuthID && candidateWeight(candidate) > 0 {
+				candidates = []SchedulerAuthCandidate{candidate}
+				sticky = true
+				break
+			}
+		}
+	}
+	if !sticky {
+		delete(c.sessions, key)
+	}
+	ceiling := limit
+	if !sticky && limit > 0 {
+		ceiling -= 2
 	}
 	available := make([]SchedulerAuthCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -205,32 +227,123 @@ func (a *App) pickCredentialWithLimit(req SchedulerPickRequest, scope string, de
 		if candidate.ID == previous {
 			active--
 		}
-		if candidate.ID != "" && candidateWeight(candidate) > 0 && (c.settings.MaxConcurrency == 0 || active < c.settings.MaxConcurrency) {
+		if candidate.ID != "" && candidateWeight(candidate) > 0 && (limit == 0 || active < ceiling) {
 			available = append(available, candidate)
 		}
 	}
 	if len(available) == 0 {
 		return ErrorEnvelope("credential_concurrency_limit", "All eligible credentials are at their concurrency limit", 429), nil
 	}
-	priority := available[0].Priority
-	for _, candidate := range available {
-		if candidate.Priority > priority {
-			priority = candidate.Priority
-		}
-	}
-	eligible := available[:0]
-	for _, candidate := range available {
-		if candidate.Priority == priority {
-			eligible = append(eligible, candidate)
-		}
-	}
-	id := a.scheduler.pick(scope, routingPoolKey(decision.Model, decision), eligible)
-	if previous != id {
+	id := a.scheduler.pick(scope, routingPoolKey(decision.Model, decision), highestPriorityCandidates(available))
+	if exists && previous != id {
 		if previous != "" {
 			c.counts[previous]--
 		}
 		c.counts[id]++
 		c.active[requestID] = id
 	}
+	if key != "" {
+		ttl := c.settings.SessionTTLMinutes
+		if ttl < 1 {
+			ttl = 5
+		}
+		c.bindSession(key, id, now, time.Duration(ttl)*time.Minute)
+	}
 	return OKEnvelope(SchedulerPickResponse{AuthID: id, Handled: true})
+}
+
+// Across-priority candidates are needed for affinity, but ordinary weighted selection retains host priority semantics.
+func highestPriorityCandidates(candidates []SchedulerAuthCandidate) []SchedulerAuthCandidate {
+	priority := -int(^uint(0)>>1) - 1
+	for _, candidate := range candidates {
+		if candidate.ID == "" || candidateWeight(candidate) <= 0 {
+			continue
+		}
+		if candidate.Priority > priority {
+			priority = candidate.Priority
+		}
+	}
+	eligible := make([]SchedulerAuthCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Priority == priority && candidate.ID != "" && candidateWeight(candidate) > 0 {
+			eligible = append(eligible, candidate)
+		}
+	}
+	return eligible
+}
+
+type credentialSession struct {
+	AuthID  string
+	Expires time.Time
+}
+
+// Scope, provider namespace and model isolate bindings; only a digest of the client identity is retained.
+func credentialSessionKey(req SchedulerPickRequest, scope string) string {
+	if scope == "" {
+		return ""
+	}
+	id := metadataString(req.Options.Metadata, "canonical_session_id")
+	if id == "" {
+		for _, name := range []string{"X-Claude-Code-Session-Id", "Session-Id", "Session_id", "X-Http-Session-Id", "X-Session-ID", "X-Session-Affinity", "X-Slot-Session-Id"} {
+			if value := strings.TrimSpace(req.Options.Headers.Get(name)); value != "" {
+				id = name + ":" + value
+				break
+			}
+		}
+	}
+	if id == "" {
+		id = metadataString(req.Options.Metadata, "execution_session_id")
+	}
+	if id == "" {
+		return ""
+	}
+	provider := metadataString(req.Options.Metadata, "session_affinity_provider")
+	if provider == "" {
+		providers := append([]string(nil), req.Providers...)
+		if req.Provider != "" {
+			providers = append(providers, req.Provider)
+		}
+		if len(providers) == 0 {
+			seen := map[string]bool{}
+			for _, candidate := range req.Candidates {
+				if !seen[candidate.Provider] {
+					providers = append(providers, candidate.Provider)
+					seen[candidate.Provider] = true
+				}
+			}
+		}
+		sort.Strings(providers)
+		provider = strings.Join(providers, ",")
+	}
+	model := metadataString(req.Options.Metadata, "session_affinity_model")
+	if model == "" {
+		model = req.Model
+	}
+	raw, _ := json.Marshal([]string{scope, provider, model, id})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// Bounded synchronous eviction keeps the embedded runtime idle between host calls. Successful admissions refresh the sliding TTL.
+func (c *credentialControls) bindSession(key, authID string, now time.Time, ttl time.Duration) {
+	if c.sessions == nil {
+		c.sessions = make(map[string]credentialSession)
+	}
+	if _, exists := c.sessions[key]; !exists && len(c.sessions) >= 8192 {
+		oldestKey := ""
+		var oldest time.Time
+		for candidate, session := range c.sessions {
+			if !session.Expires.After(now) {
+				delete(c.sessions, candidate)
+				continue
+			}
+			if oldestKey == "" || session.Expires.Before(oldest) {
+				oldestKey, oldest = candidate, session.Expires
+			}
+		}
+		if len(c.sessions) >= 8192 {
+			delete(c.sessions, oldestKey)
+		}
+	}
+	c.sessions[key] = credentialSession{AuthID: authID, Expires: now.Add(ttl)}
 }

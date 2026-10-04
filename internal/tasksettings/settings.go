@@ -10,23 +10,29 @@ import (
 
 // One policy applies to all credentials; no per-file task or concurrency overrides.
 type Settings struct {
-	MaxConcurrency  int    `json:"max_concurrency"`
-	Enabled         bool   `json:"enabled"`
-	Mode            string `json:"mode"`
-	IntervalMinutes int    `json:"interval_minutes"`
-	TimeOfDay       string `json:"time_of_day"`
-	Timezone        string `json:"timezone"`
-	Model           string `json:"model"`
-	Prompt          string `json:"prompt"`
+	SessionTTLMinutes    int    `json:"session_ttl_minutes"`
+	IgnoreUnpricedModels bool   `json:"ignore_unpriced_models"`
+	MaxConcurrency       int    `json:"max_concurrency"`
+	Enabled              bool   `json:"enabled"`
+	Mode                 string `json:"mode"`
+	IntervalMinutes      int    `json:"interval_minutes"`
+	TimeOfDay            string `json:"time_of_day"`
+	Timezone             string `json:"timezone"`
+	Model                string `json:"model"`
+	Prompt               string `json:"prompt"`
 }
 
 func Default() Settings {
-	return Settings{Mode: "interval", IntervalMinutes: 60, TimeOfDay: "09:00", Timezone: "Asia/Shanghai", Prompt: "Reply with OK."}
+	return Settings{SessionTTLMinutes: 5, Mode: "interval", IntervalMinutes: 60, TimeOfDay: "09:00", Timezone: "Asia/Shanghai", Prompt: "Reply with OK."}
 }
 
 func (s Settings) Validate() error {
-	if s.MaxConcurrency < 0 || s.MaxConcurrency > 1000000 {
-		return fmt.Errorf("max_concurrency must be 0–1000000")
+	// Two slots are reserved for established sessions; new requests require at least two ordinary slots.
+	if s.MaxConcurrency < 0 || s.MaxConcurrency > 1000000 || s.MaxConcurrency > 0 && s.MaxConcurrency < 4 {
+		return fmt.Errorf("max_concurrency must be 0 or 4–1000000")
+	}
+	if s.SessionTTLMinutes < 1 || s.SessionTTLMinutes > 525600 {
+		return fmt.Errorf("session_ttl_minutes must be 1–525600")
 	}
 	if s.Mode != "interval" && s.Mode != "daily" {
 		return fmt.Errorf("task mode must be interval or daily")

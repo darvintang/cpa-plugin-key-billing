@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title data-i18n="ui.api_key_billing">API Key Billing Plus</title>
+    <title data-i18n="ui.api_key_billing">Codex Auth Manager</title>
     <script>
       if (window.parent === window) {
         document.documentElement.setAttribute("data-cpamp-plugin-host", "true");
@@ -1147,6 +1147,9 @@
       /* Keep the two settings groups visually independent while retaining one atomic save. */
       #credential-settings-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
       .credential-limit-field { max-width: 320px; }
+      /* Keep the paired concurrency and affinity settings on one row, including narrow screens. */
+      .credential-concurrency-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 640px; }
+      .credential-concurrency-fields input { width: 100%; min-width: 0; }
       .credential-task-toggle { margin-bottom: 16px; }
       .credential-settings-actions { margin-top: 16px; }
       .credential-task-times {
@@ -2286,7 +2289,7 @@
 
       <main id="app" class="hidden">
         <header class="head app-header">
-          <div class="app-title"><h1 data-i18n="ui.api_key_billing">API Key Billing Plus</h1></div>
+          <div class="app-title"><h1 data-i18n="ui.api_key_billing">Codex Auth Manager</h1></div>
           <div class="standalone-actions" aria-label="Page actions" data-i18n-aria-label="ui.page_actions">
             <button type="button" class="icon-action" data-page-action="refresh" aria-label="Refresh" data-i18n-aria-label="ui.refresh"></button>
             <button type="button" class="icon-action" data-page-action="theme" aria-label="Switch theme" data-i18n-aria-label="ui.switch_theme"></button>
@@ -2365,11 +2368,17 @@
           <form id="credential-settings-form">
             <fieldset id="credential-settings-fields" disabled>
               <div class="card">
-                <h2 data-i18n="ui.credential_max_concurrency">Maximum concurrent requests per credential</h2>
-              <div class="credential-limit-field">
-                <label class="field"><input aria-label="Maximum concurrent requests per credential" data-i18n-aria-label="ui.credential_max_concurrency" id="credential-max-concurrency" type="number" min="0" max="1000000" value="0" required /></label>
+                <h2 data-i18n="ui.credential_concurrency_settings">Concurrency and sticky sessions</h2>
+              <div class="credential-concurrency-fields">
+                <label class="field"><span data-i18n="ui.credential_max_concurrency">Maximum concurrent requests per credential</span><input id="credential-max-concurrency" type="number" min="0" max="1000000" value="0" required /></label>
+                <label class="field"><span data-i18n="ui.credential_session_ttl">Sticky session TTL (minutes)</span><input id="credential-session-ttl" type="number" min="1" max="525600" value="5" required /></label>
               </div>
-              <p class="muted small" data-i18n="ui.credential_global_limit_hint">Applies to every credential. Zero means unlimited.</p>
+              <p class="muted small" data-i18n="ui.credential_global_limit_hint">Applies to every credential. Use 0 (unlimited) or at least 4. Ordinary requests may use limit minus 2; established sticky sessions may use the two reserved slots, within the total limit. The plugin maintains its own cache and refreshes TTL on admission. CPA restart clears bindings; unavailable credentials are replaced.</p>
+              </div>
+              <div class="card">
+              <h2 data-i18n="ui.credential_price_policy">Model price policy</h2>
+              <label class="toggle-filter credential-task-toggle"><input id="credential-ignore-unpriced" type="checkbox" role="switch" /><span data-i18n="ui.credential_ignore_unpriced">Allow models without configured prices</span></label>
+              <p class="muted small" data-i18n="ui.credential_ignore_unpriced_hint">When enabled, unpriced models pass through without billing; configured prices are still billed normally</p>
               </div>
               <div class="card">
               <h2 data-i18n="ui.credential_test_tasks">Conditional tasks</h2>
@@ -2722,7 +2731,7 @@
       </main>
     </div>
     <footer class="page-footer">
-      <span>© 2026 <a href="https://github.com/darvintang/cpa-plugin-key-billing" target="_blank" rel="noopener noreferrer">CPA Key Billing Plus</a></span>
+      <span>© 2026 <a href="https://github.com/darvintang/cpa-plugin-key-billing" target="_blank" rel="noopener noreferrer" data-i18n="ui.api_key_billing">Codex Auth Manager</a></span>
       <span>&thinsp;·&thinsp;<a href="https://github.com/darvintang/cpa-plugin-key-billing/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="ui.license">License</a></span>
       <span>&thinsp;·&thinsp;<span data-i18n="ui.version">Version</span>: v1.3.8.1</span>
     </footer>
@@ -9432,6 +9441,9 @@
         const cfg = result.settings;
         renderCredentialTimes(result);
         $("credential-max-concurrency").value = cfg.max_concurrency;
+        $("credential-max-concurrency").setCustomValidity("");
+        $("credential-session-ttl").value = cfg.session_ttl_minutes ?? 5;
+        $("credential-ignore-unpriced").checked = cfg.ignore_unpriced_models === true;
         $("credential-task-enabled").checked = cfg.enabled;
         $("credential-task-mode").value = cfg.mode;
         $("credential-task-interval").value = cfg.interval_minutes;
@@ -9449,12 +9461,19 @@
         syncCredentialSchedule();
         $("credential-settings-fields").disabled = false;
       }
+      // Reject the gap between unlimited and the minimum ceiling before submitting.
+      $("credential-max-concurrency").oninput = () => {
+        const input = $("credential-max-concurrency");
+        input.setCustomValidity(Number(input.value) > 0 && Number(input.value) < 4 ? m("ui.credential_concurrency_invalid") : "");
+      };
       $("credential-task-mode").onchange = syncCredentialSchedule;
       $("credential-settings-form").onsubmit = (event) => {
         event.preventDefault();
         guard(async () => {
           const cfg = {
             max_concurrency: Number($("credential-max-concurrency").value),
+            session_ttl_minutes: Number($("credential-session-ttl").value),
+            ignore_unpriced_models: $("credential-ignore-unpriced").checked,
             enabled: $("credential-task-enabled").checked,
             mode: $("credential-task-mode").value,
             interval_minutes: Number($("credential-task-interval").value),

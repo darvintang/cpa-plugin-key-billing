@@ -29,8 +29,10 @@ type credentialControls struct {
 	path        string
 	active      map[string]string
 	counts      map[string]int
+	sessions    map[string]credentialSession
 	worker      *os.Process
-	origin, key string // Management session only: never persist or return credentials.
+	origin, key string // Plaintext stays in memory; disk persistence uses the encrypted session store.
+	taskError   string
 }
 
 func (c *credentialControls) configure(path string) error {
@@ -52,11 +54,23 @@ func (c *credentialControls) configure(path string) error {
 			return err
 		}
 	}
+	// Migrate old small ceilings without preventing the billing plugin from starting.
+	migrated := saved.MaxConcurrency > 0 && saved.MaxConcurrency < 4
+	if migrated {
+		saved.MaxConcurrency = 4
+	}
 	if err = saved.Settings.Validate(); err != nil {
 		return err
 	}
 	c.stopWorker()
 	c.path, c.settings, c.lastRunAt = path, saved.Settings, saved.LastRunAt
+	c.taskError = ""
+	c.sessions = nil
+	if migrated {
+		if err := c.saveSettings(c.settings, c.lastRunAt); err != nil {
+			return err
+		}
+	}
 	if c.active == nil {
 		c.active = map[string]string{}
 		c.counts = map[string]int{}
@@ -73,9 +87,20 @@ func (c *credentialControls) stopWorker() {
 	}
 }
 
+// Reap exited workers during host calls; a retained process pointer is not proof of a live timer.
+func (c *credentialControls) workerRunning() bool {
+	if c.worker != nil && workerExited(c.worker) {
+		_ = c.worker.Release()
+		c.worker = nil
+		c.nextRunAt, c.executing = time.Time{}, false
+	}
+	return c.worker != nil
+}
+
 // The timer lives in a separate executable, keeping the embedded Go runtime idle between host calls.
 func (c *credentialControls) startWorker(origin, key string) error {
 	if !c.settings.Enabled {
+		c.stopWorker()
 		return nil
 	}
 	u, err := url.Parse(origin)
@@ -89,7 +114,7 @@ func (c *credentialControls) startWorker(origin, key string) error {
 	if key == "" {
 		return fmt.Errorf("management session is required")
 	}
-	if c.worker != nil && c.origin == origin && c.key == key {
+	if c.workerRunning() && c.origin == origin && c.key == key {
 		return nil
 	}
 	worker := filepath.Join("plugins", "cpa-key-billing-plus-worker")
@@ -98,6 +123,10 @@ func (c *credentialControls) startWorker(origin, key string) error {
 	}
 	if _, err := os.Stat(worker); err != nil {
 		return fmt.Errorf("install the task worker in plugins before enabling tasks")
+	}
+	// Keep only authenticated ciphertext on disk; the worker still receives its credential through stdin.
+	if err := tasksettings.SaveSession(c.path, tasksettings.Session{Origin: origin, Key: key}); err != nil {
+		return fmt.Errorf("save encrypted task session: %w", err)
 	}
 	input, output, err := os.Pipe()
 	if err != nil {
@@ -121,11 +150,40 @@ func (c *credentialControls) startWorker(origin, key string) error {
 		return err
 	}
 	c.worker, c.origin, c.key = proc, origin, key
+	c.taskError = ""
 	return nil
+}
+
+// Startup recovery runs synchronously in the host lifecycle, with no plugin-owned timer.
+func (c *credentialControls) resumeSavedWorker() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.settings.Enabled || c.workerRunning() {
+		return nil
+	}
+	_, err := os.Stat(filepath.Join(c.path+".task-session", "session.enc"))
+	if os.IsNotExist(err) {
+		return nil // Existing installations enroll the management session on their next login.
+	}
+	var session tasksettings.Session
+	if err == nil {
+		session, err = tasksettings.LoadSession(c.path)
+	}
+	if err == nil {
+		err = c.startWorker(session.Origin, session.Key)
+	}
+	if err != nil {
+		c.taskError = err.Error()
+	}
+	return err
 }
 
 func (a *App) credentialSettings(req ManagementRequest) ManagementResponse {
 	c := &a.controls
+	// Status polls can recover an exited worker from the encrypted session without a fresh browser login.
+	if req.Method == http.MethodGet {
+		_ = c.resumeSavedWorker()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if req.Method == http.MethodPut {
@@ -142,21 +200,28 @@ func (a *App) credentialSettings(req ManagementRequest) ManagementResponse {
 		if !sameTaskSchedule(cfg, c.settings) {
 			c.nextRunAt, c.executing = time.Time{}, false
 		}
+		if cfg.SessionTTLMinutes != c.settings.SessionTTLMinutes {
+			c.sessions = nil // Existing deadlines must not survive a TTL policy edit.
+		}
 		c.settings = cfg
+		if !cfg.Enabled {
+			c.stopWorker()
+		}
 	}
-	// GET without an origin is a read-only worker poll. An admin session can resume after host restart.
+	// A running worker polls without replacing its session; browser logins may update the saved credential.
 	if req.Query.Get("origin") != "" {
 		key := strings.TrimPrefix(req.Headers.Get("Authorization"), "Bearer ")
 		if err := c.startWorker(req.Query.Get("origin"), key); err != nil {
+			c.taskError = err.Error()
 			return JSONResponse(200, map[string]any{"settings": c.settings, "running": false, "error": err.Error(), "last_run_at": taskTimestamp(c.lastRunAt), "next_run_at": nil})
 		}
 	}
 	next := c.nextRunAt
-	running := c.worker != nil && c.settings.Enabled
+	running := c.workerRunning() && c.settings.Enabled
 	if !running {
 		next = time.Time{}
 	}
-	return JSONResponse(200, map[string]any{"settings": c.settings, "running": running, "executing": running && c.executing, "last_run_at": taskTimestamp(c.lastRunAt), "next_run_at": taskTimestamp(next)})
+	return JSONResponse(200, map[string]any{"settings": c.settings, "running": running, "executing": running && c.executing, "error": c.taskError, "last_run_at": taskTimestamp(c.lastRunAt), "next_run_at": taskTimestamp(next)})
 }
 
 func (a *App) credentialLimit() int {
@@ -212,7 +277,7 @@ func (a *App) credentialTaskSlot(req ManagementRequest) ManagementResponse {
 		if _, exists := c.active[body.RequestID]; exists {
 			return JSONError(409, "duplicate", "Test already reserved")
 		}
-		if c.settings.MaxConcurrency > 0 && c.counts[file.ID] >= c.settings.MaxConcurrency {
+		if c.settings.MaxConcurrency > 0 && c.counts[file.ID] >= c.settings.MaxConcurrency-2 {
 			return JSONError(429, "busy", "Credential is busy")
 		}
 		c.active[body.RequestID] = file.ID
@@ -279,7 +344,10 @@ func taskTimestamp(value time.Time) any {
 }
 
 func sameTaskSchedule(a, b tasksettings.Settings) bool {
+	// Concurrency and affinity edits do not reset the task deadline.
 	a.MaxConcurrency, b.MaxConcurrency = 0, 0
+	a.SessionTTLMinutes, b.SessionTTLMinutes = 0, 0
+	a.IgnoreUnpricedModels, b.IgnoreUnpricedModels = false, false
 	return a == b
 }
 

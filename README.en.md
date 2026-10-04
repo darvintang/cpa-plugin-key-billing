@@ -1,6 +1,6 @@
 <div align="center">
-  <h1>CPA Key Billing Plus</h1>
-  <p><strong>Per-key billing, subscription quotas, and routing for <a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a>.</strong></p>
+  <h1>Codex Auth Manager</h1>
+  <p><strong>Codex credential management, quotas, weights, concurrency, sticky sessions, scheduled tests and usage statistics for <a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a>.</strong></p>
   <p>
     <a href="https://github.com/darvintang/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/darvintang/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
     <a href="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
@@ -9,21 +9,21 @@
   </p>
   <p><strong>English</strong> · <a href="./README.md">简体中文</a></p>
 </div>
-<img src="images/example.png" alt="CPA Key Billing Plus dashboard" width="100%" />
+<img src="images/example.png" alt="Codex Auth Manager dashboard" width="100%" />
 
 ## Project origin
 
-CPA Key Billing Plus is derived from [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) **version 1.3.8** (base commit [`78150bdc1`](https://github.com/haowang02/cpa-plugin-key-billing/commit/78150bdc10ce28afde4b3539f1be48ae2bead995)), originally authored by Hao Wang (haowang02). This repository is a derivative version maintained and extended by [Darvin (darvintang)](https://github.com/darvintang).
+Codex Auth Manager is derived from [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) **version 1.3.8** (base commit [`78150bdc1`](https://github.com/haowang02/cpa-plugin-key-billing/commit/78150bdc10ce28afde4b3539f1be48ae2bead995)), originally authored by Hao Wang (haowang02). This repository is a derivative version maintained and extended by [Darvin (darvintang)](https://github.com/darvintang).
 
 ## Plus features
 
 - Pricing and request-event pages show only `gpt-*` models; the auth-file page shows only Codex. Historical data is preserved.
 - Credential call weights appear before enabled status and save automatically through the host auth-file API.
-- Settings apply one concurrency ceiling per credential (`0` means unlimited), without per-file overrides.
+- Settings accept a per-credential ceiling of `0` (unlimited) or at least `4`. Ordinary requests use at most limit minus `2`; established sticky sessions may use the two reserved slots without exceeding the total ceiling. The plugin owns the in-memory bindings, with a configurable sliding TTL (default 5 minutes). CPA restart clears bindings; unavailable or disallowed credentials are replaced. Legacy ceilings `1–3` migrate to `4`. API key concurrency limits still apply.
 - One test schedule applies to enabled Codex credentials: custom minute intervals or daily wall-clock times with an explicit time zone. Set a GPT model and prompt before enabling tests. Tests consume upstream quota and report results in plugin logs.
 - Manual installers include `plugins/cpa-key-billing-plus-worker` (`.exe` on Windows). Store installations only install the library; scheduled tests additionally require the matching Release worker executable.
 - Save task settings inside the task card and view the last execution and estimated next execution times. Upgrade both the library and worker for timing status.
-- The external worker continues after the browser closes, using the current management session. Log in again after CPA restarts to resume. Task settings never persist management keys.
+- The external worker continues after the browser closes. Enable tasks and log in once to save the management session with AES-256-GCM in the `.settings.json.task-session/` directory beside the state file. CPA restarts automatically restore the worker without a browser. The random key and ciphertext are separate files; macOS/Linux use directory mode 0700 and file mode 0600. A process able to read both files can decrypt the session; restrict access to the state directory on Windows. Log in again after a management-key change or the first upgrade to enroll the session.
 - Weight autosave requires the host auth-file fields endpoint; CLIProxyAPI `7.2.154` or newer is recommended.
 
 ## Features
@@ -127,7 +127,7 @@ plugins:
 > - Databases created by v1.0.0 or later are migrated automatically.
 > - JSON and SQLite files from v0.8.4 or earlier cannot be migrated. Point `state_file` to a new file instead.
 
-Restart CLIProxyAPI and open **API Key Billing Plus** in the management panel. Review model pricing, create subscription plans, and bind the API keys whose quotas you want to enforce.
+Restart CLIProxyAPI and open **Codex Auth Manager** in the management panel. Review model pricing, create subscription plans, and bind the API keys whose quotas you want to enforce.
 
 ## Access
 

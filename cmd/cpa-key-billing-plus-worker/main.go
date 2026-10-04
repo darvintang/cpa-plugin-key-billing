@@ -59,20 +59,29 @@ func main() {
 			return
 		}
 		var response struct {
-			Settings tasksettings.Settings `json:"settings"`
+			Settings  tasksettings.Settings `json:"settings"`
+			LastRunAt time.Time             `json:"last_run_at"`
 		}
 		if err == nil && status == 200 && json.Unmarshal(raw, &response) == nil && response.Settings.Validate() == nil {
 			cfg := response.Settings
 			schedule := cfg
 			schedule.MaxConcurrency = 0
+			schedule.SessionTTLMinutes = 0        // Affinity edits do not change the timer.
+			schedule.IgnoreUnpricedModels = false // Price policy edits do not change the timer.
 			if schedule != previous {
+				initial := previous.Mode == ""
 				previous = schedule
 				next = cfg.Next(time.Now())
+				// Restart preserves the last interval deadline; a live schedule edit starts a new interval.
+				if initial {
+					next = nextRun(cfg, response.LastRunAt, time.Now())
+				}
 			}
 			if cfg.Enabled && !time.Now().Before(next) {
+				started := time.Now()
 				if s.reportSchedule(cfg, true, time.Time{}) {
 					s.probeAll(cfg)
-					next = cfg.Next(time.Now())
+					next = nextRun(cfg, started, time.Now())
 				}
 			}
 			if cfg.Enabled {
@@ -81,6 +90,18 @@ func main() {
 		}
 		time.Sleep(time.Second * 5)
 	}
+}
+
+// Intervals count from batch start. Overdue work runs once without overlapping or replaying missed batches.
+func nextRun(cfg tasksettings.Settings, lastRun, now time.Time) time.Time {
+	if cfg.Mode == "interval" && !lastRun.IsZero() {
+		next := cfg.Next(lastRun)
+		if next.Before(now) {
+			return now
+		}
+		return next
+	}
+	return cfg.Next(now)
 }
 
 // Report the exact worker deadline rather than recalculating it in the browser.

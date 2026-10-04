@@ -1,6 +1,6 @@
 <div align="center">
-  <h1>CPA Key Billing Plus</h1>
-  <p><strong><a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a> 下游 API Key 计费与订阅额度插件。</strong></p>
+  <h1>Codex Auth Manager</h1>
+  <p><strong><a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a> Codex 认证凭证管理插件，提供凭证额度、调用权重、并发与粘性会话、定时测试管理，并统计 Token 用量、请求次数与费用。</strong></p>
   <p>
     <a href="https://github.com/darvintang/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/darvintang/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
     <a href="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
@@ -13,17 +13,17 @@
 
 ## 项目来源
 
-CPA Key Billing Plus 基于 [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) 的 **1.3.8 版本**（基准提交 [`78150bdc1`](https://github.com/haowang02/cpa-plugin-key-billing/commit/78150bdc10ce28afde4b3539f1be48ae2bead995)）开发，由 [Darvin（darvintang）](https://github.com/darvintang) 在原项目基础上维护和扩展。本仓库为衍生版本，上游原作者为 Hao Wang（haowang02）。
+Codex Auth Manager 基于 [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) 的 **1.3.8 版本**（基准提交 [`78150bdc1`](https://github.com/haowang02/cpa-plugin-key-billing/commit/78150bdc10ce28afde4b3539f1be48ae2bead995)）开发，由 [Darvin（darvintang）](https://github.com/darvintang) 在原项目基础上维护和扩展。本仓库为衍生版本，上游原作者为 Hao Wang（haowang02）。
 
 ## Plus 功能
 
 - 模型定价和请求事件页面仅显示 `gpt-*` 模型；认证文件页面仅显示 Codex。筛选不删除历史数据。
 - 认证文件卡片在启用状态前提供调用权重输入，输入完成后自动保存到宿主认证文件；悬停权重文字可查看说明，并显示当前并发数和统一并发上限。
-- 设置页统一配置每个凭证的最大并发数（`0` 表示不限），不提供逐文件覆盖。
+- 设置页统一配置每个凭证的最大并发数：只能为 `0`（不限）或至少 `4`。普通请求最多占用上限减 `2`，TTL 内命中原凭证的粘性会话可使用预留的 `2` 个槽，总并发仍不超过上限。插件自行维护内存绑定，TTL 默认 5 分钟且可配置，成功放行刷新 TTL，CPA 重启清空缓存；原凭证失效或不再符合路由规则时重新选择。旧配置 `1–3` 自动迁移为 `4`。API Key 自身的并发限制仍然生效。
 - 条件任务统一作用于启用的 Codex 凭证，支持自填分钟间隔、每日指定时间和时区；需要填写 GPT 模型与测试提示词后开启。测试会消耗上游额度，执行结果记录在插件日志中。
 - 定时执行程序 `plugins/cpa-key-billing-plus-worker`（Windows 为 `.exe`）随人工安装脚本安装；商店只安装动态库，定时任务还需安装对应 Release 的 worker 文件并授予执行权限。
 - 条件任务卡片内保存设置，并显示上次执行与预计下次执行时间；更新时间功能需同步升级动态库与 worker。
-- 定时程序使用当前管理会话，关闭浏览器后继续运行；CPA 重启后登录管理页面恢复。任务配置不保存管理密钥。
+- 定时程序在独立进程中运行，关闭浏览器后继续执行。开启任务并登录一次管理页面后，管理会话使用 AES-256-GCM 加密保存在状态文件旁的 `.settings.json.task-session/` 目录；CPA 重启会自动恢复任务，无需打开浏览器。随机密钥与密文分开保存，macOS/Linux 上目录权限为 0700、文件为 0600；同时读取两者的进程仍可解密，Windows 应限制状态目录的用户访问权限。管理密钥变更后需重新登录更新会话。首次升级也需登录一次完成保存。
 - 权重自动保存需要支持 `/v0/management/auth-files/fields` 的宿主，建议 CLIProxyAPI `7.2.154` 或更新版本。
 
 ## 功能特性
@@ -121,11 +121,11 @@ plugins:
 > - v1.0.0 至最新版本的数据库文件支持自动迁移。
 > - v0.8.4 及更早版本的 JSON 或 SQLite 数据文件不支持迁移，请将 `state_file` 指向新文件。
 
-重启 CLIProxyAPI 后，在管理中心打开「API Key Billing Plus」。确认模型定价后，创建订阅计划并绑定需要限制的 API Key。
+重启 CLIProxyAPI 后，在管理中心打开「Codex Auth Manager」。确认模型定价后，创建订阅计划并绑定需要限制的 API Key。
 
 ## 页面访问
 
-管理员可以从 CLIProxyAPI 管理中心的「API Key Billing Plus」菜单进入，也可以直接打开：
+管理员可以从 CLIProxyAPI 管理中心的「Codex Auth Manager」菜单进入，也可以直接打开：
 
 ```text
 http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing-plus/ui

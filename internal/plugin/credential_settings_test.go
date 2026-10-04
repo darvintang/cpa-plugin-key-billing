@@ -5,7 +5,10 @@ import (
 	"cpa-key-billing-plus/internal/tasksettings"
 	"encoding/json"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -13,10 +16,85 @@ import (
 	"cpa-key-billing-plus/internal/billing"
 )
 
+// A dead worker must lose its displayed deadline and must not block same-session recovery.
+func TestCredentialWorkerExit(t *testing.T) {
+	if os.Getenv("CPA_TEST_WORKER_EXIT") == "1" {
+		os.Exit(0)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCredentialWorkerExit$")
+	cmd.Env = append(os.Environ(), "CPA_TEST_WORKER_EXIT=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	c := credentialControls{worker: cmd.Process, nextRunAt: time.Now().Add(time.Hour), executing: true}
+	defer c.stopWorker()
+	deadline := time.Now().Add(5 * time.Second)
+	for c.workerRunning() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if c.worker != nil || !c.nextRunAt.IsZero() || c.executing {
+		t.Fatal("exited worker retained active task state")
+	}
+}
+
+// Persisted sessions launch a fresh worker on startup and after reaping an exited process.
+func TestCredentialWorkerStartupRecovery(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the local worker stub uses a POSIX shell")
+	}
+	directory := t.TempDir()
+	t.Chdir(directory)
+	if err := os.Mkdir("plugins", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("plugins", "cpa-key-billing-plus-worker"), []byte("#!/bin/sh\ncat >/dev/null\nexec sleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "settings.json")
+	c := credentialControls{}
+	if err := c.configure(path); err != nil {
+		t.Fatal(err)
+	}
+	c.settings.Enabled, c.settings.Model = true, "gpt-test"
+	if err := c.saveSettings(c.settings, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tasksettings.SaveSession(path, tasksettings.Session{Origin: "http://127.0.0.1:8317", Key: "dummy-management-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	var fresh credentialControls
+	if err := fresh.configure(path); err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.stopWorker()
+	if err := fresh.resumeSavedWorker(); err != nil || !fresh.workerRunning() {
+		t.Fatalf("startup did not launch worker: %v", err)
+	}
+	pid := fresh.worker.Pid
+	if err := fresh.resumeSavedWorker(); err != nil || fresh.worker.Pid != pid {
+		t.Fatal("startup recovery duplicated a live worker")
+	}
+	if err := fresh.worker.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for fresh.workerRunning() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := fresh.startWorker("http://127.0.0.1:8317", "dummy-management-secret"); err != nil || !fresh.workerRunning() || fresh.worker.Pid == pid {
+		t.Fatalf("same-session recovery did not restore worker: %v", err)
+	}
+	fresh.stopWorker()
+	fresh.settings.Enabled = false
+	if err := fresh.resumeSavedWorker(); err != nil || fresh.worker != nil {
+		t.Fatal("disabled task started a worker")
+	}
+}
+
 // Concurrent keys share the same credential ceiling; completion releases the exact reservation.
 func TestCredentialConcurrencyAcrossKeys(t *testing.T) {
 	app := newConfiguredApp(t)
-	app.controls.settings.MaxConcurrency = 2
+	app.controls.settings.MaxConcurrency = 4
 	for i := 0; i < 24; i++ {
 		app.controls.active[string(rune('a'+i))] = ""
 	}
@@ -67,18 +145,18 @@ func TestSharedSettingsPersistAndRejectInvalidEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := app.controls.settings
-	cfg.MaxConcurrency = 3
+	cfg.MaxConcurrency = 4
 	raw, _ := json.Marshal(cfg)
 	if result := app.credentialSettings(ManagementRequest{Method: http.MethodPut, Body: raw}); result.StatusCode != 200 {
 		t.Fatal(result)
 	}
 	var fresh credentialControls
-	if err := fresh.configure(path); err != nil || fresh.settings.MaxConcurrency != 3 {
+	if err := fresh.configure(path); err != nil || fresh.settings.MaxConcurrency != 4 {
 		t.Fatalf("config=%+v err=%v", fresh.settings, err)
 	}
 	cfg.MaxConcurrency = -1
 	raw, _ = json.Marshal(cfg)
-	if result := app.credentialSettings(ManagementRequest{Method: http.MethodPut, Body: raw}); result.StatusCode != 400 || app.controls.settings.MaxConcurrency != 3 {
+	if result := app.credentialSettings(ManagementRequest{Method: http.MethodPut, Body: raw}); result.StatusCode != 400 || app.controls.settings.MaxConcurrency != 4 {
 		t.Fatal(result)
 	}
 }
@@ -86,7 +164,7 @@ func TestSharedSettingsPersistAndRejectInvalidEdits(t *testing.T) {
 // The admission header reaches scheduler.pick and is cleared before the upstream sees it.
 func TestCredentialReservationLifecycle(t *testing.T) {
 	app := newAppWithPrice(t, true)
-	app.controls.settings.MaxConcurrency = 1
+	app.controls.settings.MaxConcurrency = 4
 	req := RequestInterceptRequest{RequestID: "lifecycle-1", Model: "gpt-5.5", SourceFormat: "openai", Metadata: map[string]any{MetadataCallerScope: billing.CallerScope(testAPIKey)}}
 	raw, err := app.HandleMethod(MethodRequestInterceptBefore, mustMarshal(t, req))
 	if err != nil {

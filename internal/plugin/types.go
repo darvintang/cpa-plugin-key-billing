@@ -20,8 +20,9 @@ const (
 	PluginName = "cpa-key-billing-plus"
 	Version    = "1.3.8.1"
 
-	MenuLabel       = "API Key Billing Plus"
-	MenuDescription = "Manage downstream API key routing, billing, concurrency limits, subscription quotas, and usage"
+	// Display branding emphasizes Codex credential management; stable IDs retain existing settings and history.
+	MenuLabel       = "Codex Auth Manager"
+	MenuDescription = "Manage Codex credentials, quotas, weights, concurrency and sticky sessions, with usage statistics, API key routing and scheduled tests"
 
 	GitHubRepository = "https://github.com/darvintang/cpa-plugin-key-billing"
 )
@@ -100,11 +101,15 @@ type Capabilities struct {
 	UsagePlugin            bool `json:"usage_plugin"`
 	ManagementAPI          bool `json:"management_api"`
 	Scheduler              bool `json:"scheduler"`
+	// Keep established bindings visible when host candidates span priority tiers.
+	SchedulerAcrossPriorities bool `json:"scheduler_across_priorities"`
 }
 
 type SchedulerPickRequest struct {
-	Model   string `json:"Model"`
-	Options struct {
+	Provider  string
+	Providers []string
+	Model     string `json:"Model"`
+	Options   struct {
 		Headers  http.Header
 		Metadata map[string]any `json:"Metadata"`
 	} `json:"Options"`

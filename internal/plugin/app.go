@@ -132,6 +132,10 @@ func (a *App) configure(raw []byte) error {
 	}
 	// Refresh records its result; a download failure does not disable custom prices.
 	_, _ = a.store.EnsureReferencePrices()
+	// A saved encrypted session restores the external timer without requiring an open browser.
+	if err := a.controls.resumeSavedWorker(); err != nil {
+		a.store.AddPluginLog(billing.PluginLogError, "Failed to resume scheduled tasks: %v", err)
+	}
 	return nil
 }
 
@@ -173,11 +177,12 @@ func registration() Registration {
 			},
 		},
 		Capabilities: Capabilities{
-			RequestInterceptor:     true,
-			RequestLifecyclePlugin: true,
-			UsagePlugin:            true,
-			ManagementAPI:          true,
-			Scheduler:              true,
+			RequestInterceptor:        true,
+			RequestLifecyclePlugin:    true,
+			UsagePlugin:               true,
+			ManagementAPI:             true,
+			Scheduler:                 true,
+			SchedulerAcrossPriorities: true,
 		},
 	}
 }

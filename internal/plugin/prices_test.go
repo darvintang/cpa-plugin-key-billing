@@ -227,3 +227,27 @@ func TestReferencePriceSearchAcceptsCPAModelID(t *testing.T) {
 		t.Fatalf("reference search = %+v", result.Prices)
 	}
 }
+
+// An explicit pass-through policy lets unpriced models reach the upstream without creating a billable price.
+func TestUnpricedModelPolicyCanPassThrough(t *testing.T) {
+	app := newConfiguredApp(t)
+	app.controls.settings.IgnoreUnpricedModels = true
+	raw, err := app.HandleMethod(MethodRequestInterceptBefore, mustMarshal(t, RequestInterceptRequest{SourceFormat: "openai", Model: "unpriced-dummy", RequestedModel: "unpriced-dummy"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result RequestInterceptResponse
+	decodeResult(t, raw, &result)
+	if result.Terminate {
+		t.Fatalf("unpriced model was still blocked: %+v", result)
+	}
+	app.controls.settings.IgnoreUnpricedModels = false
+	raw, err = app.HandleMethod(MethodRequestInterceptBefore, mustMarshal(t, RequestInterceptRequest{SourceFormat: "openai", Model: "unpriced-dummy", RequestedModel: "unpriced-dummy"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodeResult(t, raw, &result)
+	if !result.Terminate || result.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("default blocking policy changed: %+v", result)
+	}
+}

@@ -3,8 +3,8 @@
   "plugins": [
     {
       "id": "cpa-key-billing-plus",
-      "name": "CPA Key Billing Plus",
-      "description": "面向 Codex 的 API Key 计费与订阅额度插件，支持 GPT 模型定价、请求事件、凭证权重自动保存、统一并发上限及按分钟或每日执行的定时测试。",
+      "name": "Codex Auth Manager",
+      "description": "面向 Codex 的认证凭证管理插件，支持凭证额度查询、调用权重、并发与粘性会话控制、定时测试，以及 Token 用量、请求次数与费用统计、API Key 路由和订阅配额。",
       "author": "darvintang",
       "version": "1.3.8.1",
       "repository": "https://github.com/darvintang/cpa-plugin-key-billing",

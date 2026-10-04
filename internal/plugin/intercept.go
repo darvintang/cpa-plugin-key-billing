@@ -52,6 +52,12 @@ func (a *App) endAdmission(requestID string, admission *requestAdmission) {
 
 // Enforcement runs before auth so an over-quota request never occupies an
 // upstream credential.
+func (a *App) ignoreUnpricedModels() bool {
+	a.controls.mu.Lock()
+	defer a.controls.mu.Unlock()
+	return a.controls.settings.IgnoreUnpricedModels
+}
+
 func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	var req RequestInterceptRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
@@ -88,7 +94,8 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	if priceErr != nil {
 		return OKEnvelope(priceRefusal(req.SourceFormat, "price_storage_error", "Failed to load model pricing. Please try again later."))
 	}
-	if price.Source == billing.PriceSourceNone {
+	// Unpriced models may pass through when accounting is explicitly disabled for them.
+	if price.Source == billing.PriceSourceNone && !a.ignoreUnpricedModels() {
 		return OKEnvelope(priceRefusal(req.SourceFormat, "model_price_error", fmt.Sprintf("Model %s has no configured price", model)))
 	}
 	if helper {

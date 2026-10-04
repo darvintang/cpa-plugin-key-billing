@@ -37,15 +37,25 @@ func sessionPick(t *testing.T, app *App, requestID, session, scope string, candi
 	return result, envelope.OK
 }
 
+func envelopeOK(t *testing.T, raw []byte) bool {
+	t.Helper()
+	var envelope Envelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	return envelope.OK
+}
+
 func TestStickyReservedCapacityAndExpiry(t *testing.T) {
 	app := newConfiguredApp(t)
-	app.controls.settings.MaxConcurrency = 4
+	app.controls.sessionAffinity = true
+	app.controls.settings.MaxConcurrency = 3
 	candidate := SchedulerAuthCandidate{ID: "only", Provider: "codex"}
 	for _, test := range []struct {
 		id, session string
 		allowed     bool
 	}{
-		{"cold-1", "s1", true}, {"cold-2", "s2", true}, {"cold-3", "s3", false},
+		{"cold-1", "s1", true}, {"cold-2", "s2", true}, {"cold-3", "s3", true}, {"cold-4", "s4", false},
 		{"sticky-1", "s1", true}, {"sticky-2", "s1", true}, {"sticky-full", "s1", false},
 	} {
 		_, ok := sessionPick(t, app, test.id, test.session, "caller", candidate)
@@ -53,7 +63,7 @@ func TestStickyReservedCapacityAndExpiry(t *testing.T) {
 			t.Fatalf("%s: allowed=%t", test.id, ok)
 		}
 	}
-	if app.controls.counts["only"] != 4 {
+	if app.controls.counts["only"] != 5 {
 		t.Fatal(app.controls.counts)
 	}
 	// A denied request must not refresh the session's deadline or borrow capacity from another credential.
@@ -85,6 +95,54 @@ func TestStickyReservedCapacityAndExpiry(t *testing.T) {
 	}
 }
 
+func TestRoutingSessionAffinityControlsStickyReservation(t *testing.T) {
+	if !routingSessionAffinity([]byte("routing:\n  session-affinity: true\n")) {
+		t.Fatal("enabled CPA affinity was not detected")
+	}
+	if routingSessionAffinity([]byte("routing:\n  session-affinity: false\n")) {
+		t.Fatal("disabled CPA affinity was detected")
+	}
+	app := newConfiguredApp(t)
+	app.controls.settings.MaxConcurrency = 1
+	app.controls.sessionAffinity = false
+	app.controls.active["no-sticky"] = ""
+	request := SchedulerPickRequest{Model: "gpt-test", Provider: "codex", Candidates: []SchedulerAuthCandidate{{ID: "only"}}}
+	request.Options.Headers = http.Header{credentialRequestHeader: []string{"no-sticky"}}
+	request.Options.Metadata = map[string]any{"canonical_session_id": "s"}
+	if raw, _ := app.pickCredentialWithLimit(request, "caller", billing.RoutingDecision{}, request.Candidates); !envelopeOK(t, raw) {
+		t.Fatal("ordinary request was rejected with sticky routing disabled")
+	}
+	app.controls.active["no-sticky-full"] = ""
+	request.Options.Headers = http.Header{credentialRequestHeader: []string{"no-sticky-full"}}
+	if raw, _ := app.pickCredentialWithLimit(request, "caller", billing.RoutingDecision{}, request.Candidates); envelopeOK(t, raw) {
+		t.Fatal("disabled sticky routing borrowed reserved capacity")
+	}
+}
+
+// CPA startup arguments, rather than the plugin's lifecycle YAML, select its routing config.
+func TestHostAffinityReloadClearsBindings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	previous := os.Args
+	os.Args = []string{"cli-proxy-api", "-config", path}
+	t.Cleanup(func() { os.Args = previous })
+	app := newConfiguredApp(t)
+	if err := os.WriteFile(path, []byte("routing:\n  session-affinity: true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app.refreshSessionAffinity()
+	if !app.controls.sessionAffinity {
+		t.Fatal("host affinity did not enable")
+	}
+	app.controls.bindSession("old", "only", time.Now(), time.Minute)
+	if err := os.WriteFile(path, []byte("routing:\n  session-affinity: false\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app.refreshSessionAffinity()
+	if app.controls.sessionAffinity || len(app.controls.sessions) != 0 {
+		t.Fatal("disabled host affinity kept its bindings")
+	}
+}
+
 // API-provider weights must survive the concurrency filter, with completed requests releasing their slots.
 func TestAPIProviderWeightsWithConcurrencyLimit(t *testing.T) {
 	app := newConfiguredApp(t)
@@ -106,7 +164,7 @@ func TestAPIProviderWeightsWithConcurrencyLimit(t *testing.T) {
 	if counts["api-heavy"] != 30 || counts["api-light"] != 10 {
 		t.Fatalf("API provider weights were ignored: %v", counts)
 	}
-	app.controls.counts["api-heavy"] = 2
+	app.controls.counts["api-heavy"] = 4
 	result, ok := sessionPick(t, app, "saturated", "", "caller", candidates...)
 	if !ok || result.AuthID != "api-light" {
 		t.Fatalf("saturated credential remained eligible: %+v allowed=%t", result, ok)
@@ -116,6 +174,7 @@ func TestAPIProviderWeightsWithConcurrencyLimit(t *testing.T) {
 
 func TestStickyPriorityInvalidationAndUnlimited(t *testing.T) {
 	app := newConfiguredApp(t)
+	app.controls.sessionAffinity = true
 	app.controls.settings.MaxConcurrency = 4
 	low := SchedulerAuthCandidate{ID: "low", Provider: "codex"}
 	high := SchedulerAuthCandidate{ID: "high", Provider: "codex", Priority: 10}
@@ -192,7 +251,7 @@ func TestSessionIdentityIsolationAndBoundedCache(t *testing.T) {
 	}
 }
 
-func TestLegacyCeilingMigrationAndPolicyValidation(t *testing.T) {
+func TestCeilingPolicyValidation(t *testing.T) {
 	for _, limit := range []int{1, 2, 3} {
 		cfg := tasksettings.Default()
 		cfg.MaxConcurrency = limit
@@ -202,15 +261,15 @@ func TestLegacyCeilingMigrationAndPolicyValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 		c := credentialControls{}
-		if err := c.configure(path); err != nil || c.settings.MaxConcurrency != 4 {
+		if err := c.configure(path); err != nil || c.settings.MaxConcurrency != limit {
 			t.Fatal(c.settings, err)
 		}
 		raw, _ = os.ReadFile(path)
-		if err := json.Unmarshal(raw, &cfg); err != nil || cfg.MaxConcurrency != 4 {
+		if err := json.Unmarshal(raw, &cfg); err != nil || cfg.MaxConcurrency != limit {
 			t.Fatal(cfg, err)
 		}
 	}
-	for _, limit := range []int{-1, 1, 2, 3, 1000001} {
+	for _, limit := range []int{-1, 1000001} {
 		cfg := tasksettings.Default()
 		cfg.MaxConcurrency = limit
 		if cfg.Validate() == nil {
@@ -229,6 +288,7 @@ func TestLegacyCeilingMigrationAndPolicyValidation(t *testing.T) {
 func TestStickyConcurrentFirstBinding(t *testing.T) {
 	app := newConfiguredApp(t)
 	app.controls.settings.MaxConcurrency = 4
+	app.controls.sessionAffinity = true
 	for i := 0; i < 24; i++ {
 		app.controls.active[fmt.Sprint(i)] = ""
 	}
@@ -260,7 +320,7 @@ func TestStickyConcurrentFirstBinding(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	if admitted != 4 || len(app.controls.counts) != 1 || len(app.controls.sessions) != 1 {
+	if admitted != 6 || len(app.controls.counts) != 1 || len(app.controls.sessions) != 1 {
 		t.Fatal(admitted, app.controls.counts, app.controls.sessions)
 	}
 }

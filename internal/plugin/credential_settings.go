@@ -16,6 +16,7 @@ import (
 
 	"cpa-key-billing-plus/internal/billing"
 	"cpa-key-billing-plus/internal/tasksettings"
+	"gopkg.in/yaml.v3"
 )
 
 const credentialRequestHeader = "X-Cpa-Billing-Plus-Request"
@@ -33,6 +34,9 @@ type credentialControls struct {
 	worker      *os.Process
 	origin, key string // Plaintext stays in memory; disk persistence uses the encrypted session store.
 	taskError   string
+	// sessionAffinity mirrors CPA's routing.session-affinity switch so the
+	// plugin only applies its own sticky-session reservation when CPA does.
+	sessionAffinity bool
 }
 
 func (c *credentialControls) configure(path string) error {
@@ -54,11 +58,6 @@ func (c *credentialControls) configure(path string) error {
 			return err
 		}
 	}
-	// Migrate old small ceilings without preventing the billing plugin from starting.
-	migrated := saved.MaxConcurrency > 0 && saved.MaxConcurrency < 4
-	if migrated {
-		saved.MaxConcurrency = 4
-	}
 	if err = saved.Settings.Validate(); err != nil {
 		return err
 	}
@@ -66,16 +65,51 @@ func (c *credentialControls) configure(path string) error {
 	c.path, c.settings, c.lastRunAt = path, saved.Settings, saved.LastRunAt
 	c.taskError = ""
 	c.sessions = nil
-	if migrated {
-		if err := c.saveSettings(c.settings, c.lastRunAt); err != nil {
-			return err
-		}
-	}
 	if c.active == nil {
 		c.active = map[string]string{}
 		c.counts = map[string]int{}
 	}
 	return nil
+}
+
+func routingSessionAffinity(raw []byte) bool {
+	var document struct {
+		Routing struct {
+			SessionAffinity bool `yaml:"session-affinity"`
+		} `yaml:"routing"`
+	}
+	if yaml.Unmarshal(raw, &document) != nil {
+		return false
+	}
+	return document.Routing.SessionAffinity
+}
+
+// Lifecycle YAML contains plugin settings only. CPA's -config argument
+// identifies the host routing policy; the default is config.yaml in its cwd.
+func (a *App) refreshSessionAffinity() {
+	path := "config.yaml"
+	for i, arg := range os.Args[1:] {
+		if (arg == "-config" || arg == "--config") && i+2 < len(os.Args) {
+			path = os.Args[i+2]
+			break
+		}
+		if strings.HasPrefix(arg, "-config=") || strings.HasPrefix(arg, "--config=") {
+			path = strings.SplitN(arg, "=", 2)[1]
+			break
+		}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	c := &a.controls
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	enabled := routingSessionAffinity(raw)
+	if enabled != c.sessionAffinity {
+		c.sessions = nil
+		c.sessionAffinity = enabled
+	}
 }
 
 func (c *credentialControls) stopWorker() {
@@ -179,6 +213,7 @@ func (c *credentialControls) resumeSavedWorker() error {
 }
 
 func (a *App) credentialSettings(req ManagementRequest) ManagementResponse {
+	a.refreshSessionAffinity()
 	c := &a.controls
 	// Status polls can recover an exited worker from the encrypted session without a fresh browser login.
 	if req.Method == http.MethodGet {
@@ -221,7 +256,7 @@ func (a *App) credentialSettings(req ManagementRequest) ManagementResponse {
 	if !running {
 		next = time.Time{}
 	}
-	return JSONResponse(200, map[string]any{"settings": c.settings, "running": running, "executing": running && c.executing, "error": c.taskError, "last_run_at": taskTimestamp(c.lastRunAt), "next_run_at": taskTimestamp(next)})
+	return JSONResponse(200, map[string]any{"settings": c.settings, "sticky_sessions": c.sessionAffinity, "running": running, "executing": running && c.executing, "error": c.taskError, "last_run_at": taskTimestamp(c.lastRunAt), "next_run_at": taskTimestamp(next)})
 }
 
 func (a *App) credentialLimit() int {

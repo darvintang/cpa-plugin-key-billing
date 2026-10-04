@@ -313,8 +313,10 @@ setInterval(async () => {
   try {
     const result = await plugin("GET", tab === "settings" ? "/credential-settings" : "/auth-files");
     if (generation !== sessionGeneration || currentRole !== "admin" || activeTab(false) !== tab) return;
-    if (tab === "settings") renderCredentialTimes(result);
-    else {
+    if (tab === "settings") {
+      $("credential-session-ttl-field").classList.toggle("hidden", !result.sticky_sessions);
+      renderCredentialTimes(result);
+    } else {
       const files = new Map((result.files || []).map((file) => [file.auth_index, file]));
       for (const node of $("auth-files-body").querySelectorAll(".auth-file-concurrency")) {
         const file = files.get(node.dataset.authIndex);
@@ -329,6 +331,8 @@ async function loadCredentialSettings() {
   $("credential-settings-fields").disabled = true;
   const result = await plugin("GET", "/credential-settings");
   const cfg = result.settings;
+  // The host switch governs both binding reservations and TTL visibility.
+  $("credential-session-ttl-field").classList.toggle("hidden", !result.sticky_sessions);
   renderCredentialTimes(result);
   $("credential-max-concurrency").value = cfg.max_concurrency;
   $("credential-max-concurrency").setCustomValidity("");
@@ -350,10 +354,10 @@ async function loadCredentialSettings() {
   syncCredentialSchedule();
   $("credential-settings-fields").disabled = false;
 }
-// Reject the gap between unlimited and the minimum ceiling before submitting.
+// Small positive limits now represent ordinary capacity without subtracting reserved slots.
 $("credential-max-concurrency").oninput = () => {
   const input = $("credential-max-concurrency");
-  input.setCustomValidity(Number(input.value) > 0 && Number(input.value) < 4 ? m("ui.credential_concurrency_invalid") : "");
+  input.setCustomValidity(Number(input.value) < 0 ? m("ui.credential_concurrency_invalid") : "");
 };
 $("credential-task-mode").onchange = syncCredentialSchedule;
 $("credential-settings-form").onsubmit = (event) => {

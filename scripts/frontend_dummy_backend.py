@@ -1337,7 +1337,7 @@ def route_rows():
 
 def payload_for(path, query):
     if path == f"{API_BASE}/credential-settings":
-        return {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"]}
+        return {"settings": CREDENTIAL_SETTINGS, "sticky_sessions": True, "running": CREDENTIAL_SETTINGS["enabled"]}
     if path == f"{API_BASE}/keys":
         refresh_route_counts()
         return {"keys": key_rows()}

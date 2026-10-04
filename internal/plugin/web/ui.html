@@ -130,9 +130,9 @@
                 <h2 data-i18n="ui.credential_concurrency_settings">Concurrency and sticky sessions</h2>
               <div class="credential-concurrency-fields">
                 <label class="field"><span data-i18n="ui.credential_max_concurrency">Maximum concurrent requests per credential</span><input id="credential-max-concurrency" type="number" min="0" max="1000000" value="0" required /></label>
-                <label class="field"><span data-i18n="ui.credential_session_ttl">Sticky session TTL (minutes)</span><input id="credential-session-ttl" type="number" min="1" max="525600" value="5" required /></label>
+                <label id="credential-session-ttl-field" class="field hidden"><span data-i18n="ui.credential_session_ttl">Sticky session TTL (minutes)</span><input id="credential-session-ttl" type="number" min="1" max="525600" value="5" required /></label>
               </div>
-              <p class="muted small" data-i18n="ui.credential_global_limit_hint">Applies to every credential. Use 0 (unlimited) or at least 4. Ordinary requests may use limit minus 2; established sticky sessions may use the two reserved slots, within the total limit. The plugin maintains its own cache and refreshes TTL on admission. CPA restart clears bindings; unavailable credentials are replaced.</p>
+              <p class="muted small" data-i18n="ui.credential_global_limit_hint">Applies to every credential. Use 0 (unlimited) or at least 1. With CPA sticky routing off, this is the full limit; when it is on, new sessions use this limit and established sessions within TTL may use two additional slots.</p>
               </div>
               <div class="card">
               <h2 data-i18n="ui.credential_test_tasks">Conditional tasks</h2>
@@ -498,7 +498,7 @@
     <footer class="page-footer">
       <span>© 2026 <a href="https://github.com/darvintang/cpa-plugin-key-billing" target="_blank" rel="noopener noreferrer" data-i18n="ui.api_key_billing">Codex Auth Manager</a></span>
       <span>&thinsp;·&thinsp;<a href="https://github.com/darvintang/cpa-plugin-key-billing/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="ui.license">License</a></span>
-      <span>&thinsp;·&thinsp;<span data-i18n="ui.version">Version</span>: v1.3.19.2</span>
+      <span>&thinsp;·&thinsp;<span data-i18n="ui.version">Version</span>: v1.3.19.3</span>
     </footer>
 
     <div id="notice" class="notice" popover="manual"></div>

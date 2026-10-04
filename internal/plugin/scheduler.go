@@ -142,6 +142,7 @@ func candidateAllowed(candidate SchedulerAuthCandidate, decision billing.Routing
 }
 
 func (a *App) pickCredential(raw []byte) ([]byte, error) {
+	a.refreshSessionAffinity()
 	var req SchedulerPickRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, fmt.Errorf("Parse upstream credential scheduling parameters: %w", err)
@@ -177,7 +178,7 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	if len(allowed) == 0 {
 		return ErrorEnvelope("no_routed_credential", noRoutedCredentialMessage, http.StatusServiceUnavailable), nil
 	}
-	if a.credentialLimit() > 0 || credentialSessionKey(req, scope) != "" {
+	if a.credentialLimit() > 0 || (a.stickySessionsEnabled() && credentialSessionKey(req, scope) != "") {
 		return a.pickCredentialWithLimit(req, scope, decision, allowed)
 	}
 	if len(allowed) == len(req.Candidates) {
@@ -202,7 +203,10 @@ func (a *App) pickCredentialWithLimit(req SchedulerPickRequest, scope string, de
 		return ErrorEnvelope("invalid_request_id", "Request lifecycle identity is required", 503), nil
 	}
 	now := time.Now()
-	key := credentialSessionKey(req, scope)
+	key := ""
+	if c.sessionAffinity {
+		key = credentialSessionKey(req, scope)
+	}
 	binding := c.sessions[key]
 	sticky := false
 	if key != "" && binding.Expires.After(now) {
@@ -217,9 +221,11 @@ func (a *App) pickCredentialWithLimit(req SchedulerPickRequest, scope string, de
 	if !sticky {
 		delete(c.sessions, key)
 	}
+	// The configured limit is ordinary capacity; only a live binding may
+	// admit requests up to the limit plus the two reserved sticky slots.
 	ceiling := limit
-	if !sticky && limit > 0 {
-		ceiling -= 2
+	if sticky && limit > 0 {
+		ceiling += 2
 	}
 	available := make([]SchedulerAuthCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -242,7 +248,7 @@ func (a *App) pickCredentialWithLimit(req SchedulerPickRequest, scope string, de
 		c.counts[id]++
 		c.active[requestID] = id
 	}
-	if key != "" {
+	if c.sessionAffinity && key != "" {
 		ttl := c.settings.SessionTTLMinutes
 		if ttl < 1 {
 			ttl = 5
@@ -250,6 +256,12 @@ func (a *App) pickCredentialWithLimit(req SchedulerPickRequest, scope string, de
 		c.bindSession(key, id, now, time.Duration(ttl)*time.Minute)
 	}
 	return OKEnvelope(SchedulerPickResponse{AuthID: id, Handled: true})
+}
+
+func (a *App) stickySessionsEnabled() bool {
+	a.controls.mu.Lock()
+	defer a.controls.mu.Unlock()
+	return a.controls.sessionAffinity
 }
 
 // Across-priority candidates are needed for affinity, but ordinary weighted selection retains host priority semantics.

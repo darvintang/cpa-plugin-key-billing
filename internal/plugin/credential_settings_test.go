@@ -126,7 +126,7 @@ func TestCredentialConcurrencyAcrossKeys(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if len(selected) != 4 || app.controls.counts["a"] != 2 || app.controls.counts["b"] != 2 {
+	if len(selected) != 8 || app.controls.counts["a"] != 4 || app.controls.counts["b"] != 4 {
 		t.Fatalf("selected=%d counts=%v", len(selected), app.controls.counts)
 	}
 	for _, id := range selected {

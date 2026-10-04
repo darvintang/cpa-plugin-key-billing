@@ -18,7 +18,7 @@ const (
 const (
 	PluginID   = "cpa-key-billing-plus"
 	PluginName = "cpa-key-billing-plus"
-	Version    = "1.3.19.2"
+	Version    = "1.3.19.3"
 
 	// Display branding emphasizes Codex credential management; stable IDs retain existing settings and history.
 	MenuLabel       = "Codex Auth Manager"

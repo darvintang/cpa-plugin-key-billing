@@ -116,6 +116,7 @@ func (a *App) configure(raw []byte) error {
 	if err := a.controls.configure(cfg.StateFile + ".settings.json"); err != nil {
 		return err
 	}
+	a.refreshSessionAffinity()
 	if errConfigure := func() error {
 		a.routingMu.Lock()
 		defer a.routingMu.Unlock()

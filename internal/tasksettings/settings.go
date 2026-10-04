@@ -26,9 +26,10 @@ func Default() Settings {
 }
 
 func (s Settings) Validate() error {
-	// Two slots are reserved for established sessions; new requests require at least two ordinary slots.
-	if s.MaxConcurrency < 0 || s.MaxConcurrency > 1000000 || s.MaxConcurrency > 0 && s.MaxConcurrency < 4 {
-		return fmt.Errorf("max_concurrency must be 0 or 4–1000000")
+	// The configured ceiling applies to new sessions; established CPA sticky
+	// sessions may borrow two additional slots while their binding is alive.
+	if s.MaxConcurrency < 0 || s.MaxConcurrency > 1000000 {
+		return fmt.Errorf("max_concurrency must be 0 or 1–1000000")
 	}
 	if s.SessionTTLMinutes < 1 || s.SessionTTLMinutes > 525600 {
 		return fmt.Errorf("session_ttl_minutes must be 1–525600")

@@ -296,7 +296,8 @@ function renderCredentialTimes(result) {
   last.dateTime = result.last_run_at || "";
   next.textContent = result.next_run_at
     ? format(result.next_run_at)
-    : m(
+    : result.error ||
+      m(
         !result.settings.enabled
           ? "ui.disabled"
           : result.executing ? "ui.credential_executing" : result.running ? "ui.credential_scheduling" : "ui.credential_task_waiting"

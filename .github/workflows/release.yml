@@ -187,6 +187,15 @@ jobs:
             go build -trimpath -ldflags="-s -w" \
             -o "cpa-key-billing-plus-worker_${RELEASE_TAG#v}_${TARGET_OS}_${TARGET_ARCH}${suffix}" ./cmd/cpa-key-billing-plus-worker
 
+      # Verify the standalone macOS asset before it enters release checksums.
+      - name: Sign macOS scheduled task worker
+        if: matrix.os == 'darwin'
+        shell: bash
+        run: |
+          worker="cpa-key-billing-plus-worker_${RELEASE_TAG#v}_${{ matrix.os }}_${{ matrix.arch }}"
+          codesign --force --sign - "$worker"
+          codesign --verify --strict "$worker"
+
       - name: Build macOS plugin
         if: matrix.os == 'darwin'
         env:

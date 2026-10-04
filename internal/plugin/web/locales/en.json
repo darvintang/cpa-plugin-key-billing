@@ -691,7 +691,7 @@
   "ui.credential_task_hint": "One schedule applies to all enabled Codex files. Disabled or busy credentials are skipped. Test requests consume upstream quota.",
   "ui.credential_call_weight": "Scheduling weight",
   "ui.credential_task_running": "Scheduled tasks are running",
-  "ui.credential_task_waiting": "Scheduled tasks are stopped; log in to update the management session",
+  "ui.credential_task_waiting": "Tasks are not running. Check the status or error details.",
   "ui.saved": "Saved",
   "ui.database_management": "Database management",
   "ui.database_retention_days": "Retain recent days (minimum 4)",

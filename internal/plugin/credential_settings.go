@@ -22,18 +22,19 @@ import (
 const credentialRequestHeader = "X-Cpa-Billing-Plus-Request"
 
 type credentialControls struct {
-	mu          sync.Mutex
-	settings    tasksettings.Settings
-	lastRunAt   time.Time
-	nextRunAt   time.Time
-	executing   bool
-	path        string
-	active      map[string]string
-	counts      map[string]int
-	sessions    map[string]credentialSession
-	worker      *os.Process
-	origin, key string // Plaintext stays in memory; disk persistence uses the encrypted session store.
-	taskError   string
+	mu                   sync.Mutex
+	settings             tasksettings.Settings
+	lastRunAt            time.Time
+	nextRunAt            time.Time
+	executing            bool
+	path                 string
+	active               map[string]string
+	counts               map[string]int
+	sessions             map[string]credentialSession
+	worker               *os.Process
+	origin, key          string // Plaintext stays in memory; disk persistence uses the encrypted session store.
+	taskError            string
+	workerInstallRetryAt time.Time
 	// sessionAffinity mirrors CPA's routing.session-affinity switch so the
 	// plugin only applies its own sticky-session reservation when CPA does.
 	sessionAffinity bool
@@ -155,9 +156,19 @@ func (c *credentialControls) startWorker(origin, key string) error {
 	if runtime.GOOS == "windows" {
 		worker += ".exe"
 	}
-	if _, err := os.Stat(worker); err != nil {
-		return fmt.Errorf("install the task worker in plugins before enabling tasks")
+	// Status polling must not repeatedly download a missing asset while
+	// GitHub is unavailable; a saved session remains usable for the next retry.
+	if time.Now().Before(c.workerInstallRetryAt) {
+		if _, err := os.Stat(worker); os.IsNotExist(err) {
+			return fmt.Errorf("%s", c.taskError)
+		}
 	}
+	if err := ensureTaskWorker(worker); err != nil {
+		c.workerInstallRetryAt = time.Now().Add(time.Minute)
+		c.taskError = fmt.Sprintf("install scheduled task worker: %v", err)
+		return fmt.Errorf("%s", c.taskError)
+	}
+	c.workerInstallRetryAt = time.Time{}
 	// Keep only authenticated ciphertext on disk; the worker still receives its credential through stdin.
 	if err := tasksettings.SaveSession(c.path, tasksettings.Session{Origin: origin, Key: key}); err != nil {
 		return fmt.Errorf("save encrypted task session: %w", err)

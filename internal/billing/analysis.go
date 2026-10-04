@@ -70,7 +70,7 @@ func (s *Store) Analysis(query RequestEventQuery) (AnalysisView, error) {
 	}
 	query.From, query.To = from, to
 	view, err := withRepository(s, func(repo Repository) (AnalysisView, error) {
-		return repo.Analysis(query, now.Add(-RequestEventRetention))
+		return repo.Analysis(query, now.Add(-s.RequestEventRetention()))
 	})
 	if view.UsageDistribution.APIKeys == nil {
 		view.UsageDistribution.APIKeys = []AnalysisComposition{}
@@ -93,7 +93,7 @@ func effectiveAnalysisRange(query RequestEventQuery, now time.Time) (time.Time, 
 	if from.IsZero() {
 		from = to.Add(-30 * 24 * time.Hour)
 	}
-	cutoff := now.Add(-RequestEventRetention)
+	cutoff := now.Add(-s.RequestEventRetention())
 	if from.Before(cutoff) {
 		from = cutoff
 	}

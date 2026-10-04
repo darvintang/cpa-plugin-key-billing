@@ -174,6 +174,11 @@ func registration() Registration {
 					Type:        "string",
 					Description: "Billing database file path",
 				},
+				{
+					Name:        "request_event_retention_days",
+					Type:        "number",
+					Description: "Maximum days to retain request events; older success and error events are deleted automatically",
+				},
 			},
 		},
 		Capabilities: Capabilities{

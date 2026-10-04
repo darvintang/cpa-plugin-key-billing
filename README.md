@@ -112,6 +112,7 @@ plugins:
       codex_fast_mode_billing: false # 开启后，Codex 的 priority 请求按 2.5 倍计费
       mask_api_key_view_emails: false # 对 API Key 查询页面返回的邮箱进行掩码脱敏
       allow_api_key_quota_reset: false # 允许 API Key 用户重置可访问的 Codex 认证文件额度，消耗上游重置次数
+      request_event_retention_days: 365 # 请求事件最大保留天数，超过后自动删除
       state_file: "plugins/cpa-key-billing-plus-state-v1.db"
 ```
 

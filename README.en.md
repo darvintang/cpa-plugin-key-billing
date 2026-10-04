@@ -118,6 +118,7 @@ plugins:
       codex_fast_mode_billing: false # Charge 2.5× for Codex priority requests
       mask_api_key_view_emails: false # Mask email addresses in API key account views
       allow_api_key_quota_reset: false # Allow API key users to reset accessible Codex auth file quotas using upstream reset credits
+      request_event_retention_days: 365 # Maximum request-event retention in days; older events are deleted automatically
       state_file: "plugins/cpa-key-billing-plus-state-v1.db"
 ```
 

@@ -64,6 +64,12 @@ func (s *Store) Now() time.Time {
 	return s.now()
 }
 
+func (s *Store) RequestEventRetention() time.Duration {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg.RequestEventRetention()
+}
+
 // The host invokes Configure on every plugin.reconfigure, so repeated calls
 // must be safe.
 func (s *Store) Configure(cfg Config) error {
@@ -97,7 +103,7 @@ func (s *Store) Configure(cfg Config) error {
 		return errOpen
 	}
 	now := s.Now()
-	snapshot, errLoad := repo.Load(now.Add(-RequestEventRetention), now.Add(-PluginLogRetention))
+	snapshot, errLoad := repo.Load(now.Add(-normalized.RequestEventRetention()), now.Add(-PluginLogRetention))
 	if errLoad != nil {
 		s.closeRepository(repo)
 		return errLoad

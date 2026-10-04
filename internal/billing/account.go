@@ -63,6 +63,7 @@ func (s *Store) recordUsage(event UsageEvent, failure *RequestError) {
 	}
 
 	cost := ComputeCost(price, event.Breakdown)
+	retention := s.RequestEventRetention()
 	missingCycleTime := false
 	updateResult(s, func(state *State) (struct{}, Changes) {
 		// ServiceTier is the client-requested tier, not the upstream response tier.
@@ -128,7 +129,7 @@ func (s *Store) recordUsage(event UsageEvent, failure *RequestError) {
 		}
 		changes := Changes{
 			Keys:               changedKeys,
-			RequestEventCutoff: at.Add(-RequestEventRetention),
+			RequestEventCutoff: at.Add(-retention),
 		}
 		if failure == nil {
 			changes.NormalRequestEvents = []RequestEvent{entry}

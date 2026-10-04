@@ -30,7 +30,7 @@ type RequestEvent struct {
 	ReasoningTokens int64 `json:"reasoning_tokens,omitempty"`
 }
 
-const RequestEventRetention = 365 * 24 * time.Hour
+const RequestEventRetention = DefaultRequestEventRetentionDays * 24 * time.Hour
 
 // Source uses the event's account snapshot; key labels use their current values.
 type RequestEventRow struct {
@@ -96,7 +96,7 @@ type RequestEventStatusCounts struct {
 
 func (s *Store) RequestEvents(query RequestEventQuery) (RequestEventView, error) {
 	view, err := withRepository(s, func(repo Repository) (RequestEventView, error) {
-		return repo.RequestEvents(query, s.Now().Add(-RequestEventRetention))
+		return repo.RequestEvents(query, s.Now().Add(-s.RequestEventRetention()))
 	})
 	if view.Entries == nil {
 		view.Entries = []RequestEventRow{}
@@ -114,7 +114,7 @@ type EventKey struct {
 
 func (s *Store) EventKeys(from, to time.Time) ([]EventKey, error) {
 	return withRepository(s, func(repo Repository) ([]EventKey, error) {
-		return repo.EventKeys(from, to, s.Now().Add(-RequestEventRetention))
+		return repo.EventKeys(from, to, s.Now().Add(-s.RequestEventRetention()))
 	})
 }
 

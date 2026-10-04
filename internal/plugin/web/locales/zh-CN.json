@@ -689,7 +689,7 @@
   "ui.credential_test_model": "GPT 测试模型",
   "ui.credential_test_prompt": "测试提示词",
   "ui.credential_task_hint": "统一作用于所有已启用的 Codex 凭证，跳过停用或并发已满的凭证。测试请求会消耗上游额度。",
-  "ui.credential_call_weight": "调用权重",
+  "ui.credential_call_weight": "调度权重",
   "ui.credential_task_running": "定时任务运行中",
   "ui.credential_task_waiting": "定时任务未运行，请登录更新管理会话",
   "ui.saved": "已保存",

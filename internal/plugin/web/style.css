@@ -15,7 +15,8 @@
   max-width: 100%;
   font-size: 12px;
 }
-.credential-weight input { width: 64px; min-width: 0; }
+/* Match the grid track even when the host or shared number-input rule sets a wider width. */
+:root .credential-weight input[type="number"] { width: 64px; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .credential-weight-status { grid-column: 1 / -1; overflow-wrap: anywhere; }
 .credential-weight-status:empty { display: none; }
 .credential-weight-help { cursor: help; }

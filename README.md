@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Codex Auth Manager</h1>
-  <p><strong><a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a> Codex 认证凭证管理插件，提供凭证额度、调用权重、并发与粘性会话、定时测试管理，并统计 Token 用量、请求次数与费用。</strong></p>
+  <p><strong><a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a> Codex 认证凭证管理插件，提供凭证额度、调度权重、并发与粘性会话、定时测试管理，并统计 Token 用量、请求次数与费用。</strong></p>
   <p>
     <a href="https://github.com/darvintang/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/darvintang/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
     <a href="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/darvintang/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
@@ -18,7 +18,7 @@ Codex Auth Manager 基于 [haowang02/cpa-plugin-key-billing](https://github.com/
 ## Plus 功能
 
 - 模型定价和请求事件页面仅显示 `gpt-*` 模型；认证文件页面仅显示 Codex。筛选不删除历史数据。
-- 认证文件卡片在启用状态前提供调用权重输入，输入完成后自动保存到宿主认证文件；悬停权重文字可查看说明，并显示当前并发数和统一并发上限。
+- 认证文件卡片在启用状态前提供调度权重输入，输入完成后自动保存到宿主认证文件；悬停权重文字可查看说明，并显示当前并发数和统一并发上限。
 - 设置页统一配置每个凭证的最大并发数：只能为 `0`（不限）或至少 `4`。普通请求最多占用上限减 `2`，TTL 内命中原凭证的粘性会话可使用预留的 `2` 个槽，总并发仍不超过上限。插件自行维护内存绑定，TTL 默认 5 分钟且可配置，成功放行刷新 TTL，CPA 重启清空缓存；原凭证失效或不再符合路由规则时重新选择。旧配置 `1–3` 自动迁移为 `4`。API Key 自身的并发限制仍然生效。
 - 条件任务统一作用于启用的 Codex 凭证，支持自填分钟间隔、每日指定时间和时区；需要填写 GPT 模型与测试提示词后开启。测试会消耗上游额度，执行结果记录在插件日志中。
 - 定时执行程序 `plugins/cpa-key-billing-plus-worker`（Windows 为 `.exe`）随人工安装脚本安装；商店只安装动态库，定时任务还需安装对应 Release 的 worker 文件并授予执行权限。

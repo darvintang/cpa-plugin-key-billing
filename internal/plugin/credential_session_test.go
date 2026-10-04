@@ -85,6 +85,35 @@ func TestStickyReservedCapacityAndExpiry(t *testing.T) {
 	}
 }
 
+// API-provider weights must survive the concurrency filter, with completed requests releasing their slots.
+func TestAPIProviderWeightsWithConcurrencyLimit(t *testing.T) {
+	app := newConfiguredApp(t)
+	app.controls.settings.MaxConcurrency = 4
+	candidates := []SchedulerAuthCandidate{
+		{ID: "api-heavy", Provider: "codex", Attributes: map[string]string{"api_key": "dummy-heavy", "weight": "3"}},
+		{ID: "api-light", Provider: "codex", Attributes: map[string]string{"api_key": "dummy-light"}, Metadata: map[string]any{"weight": float64(1)}},
+	}
+	counts := map[string]int{}
+	for i := range 40 {
+		id := fmt.Sprintf("weighted-%d", i)
+		result, ok := sessionPick(t, app, id, "", "caller", candidates...)
+		if !ok {
+			t.Fatal("available API credentials rejected")
+		}
+		counts[result.AuthID]++
+		app.releaseCredential(id)
+	}
+	if counts["api-heavy"] != 30 || counts["api-light"] != 10 {
+		t.Fatalf("API provider weights were ignored: %v", counts)
+	}
+	app.controls.counts["api-heavy"] = 2
+	result, ok := sessionPick(t, app, "saturated", "", "caller", candidates...)
+	if !ok || result.AuthID != "api-light" {
+		t.Fatalf("saturated credential remained eligible: %+v allowed=%t", result, ok)
+	}
+	app.releaseCredential("saturated")
+}
+
 func TestStickyPriorityInvalidationAndUnlimited(t *testing.T) {
 	app := newConfiguredApp(t)
 	app.controls.settings.MaxConcurrency = 4

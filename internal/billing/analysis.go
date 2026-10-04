@@ -64,7 +64,7 @@ type AnalysisView struct {
 
 func (s *Store) Analysis(query RequestEventQuery) (AnalysisView, error) {
 	now := s.Now()
-	from, to := effectiveAnalysisRange(query, now)
+	from, to := effectiveAnalysisRange(query, now, s.RequestEventRetention())
 	if !from.Before(to) {
 		return AnalysisView{}, invalidf("The analysis range is outside the retained request history")
 	}
@@ -84,7 +84,8 @@ func (s *Store) Analysis(query RequestEventQuery) (AnalysisView, error) {
 	return view, err
 }
 
-func effectiveAnalysisRange(query RequestEventQuery, now time.Time) (time.Time, time.Time) {
+// effectiveAnalysisRange keeps analysis queries inside the retained event window.
+func effectiveAnalysisRange(query RequestEventQuery, now time.Time, retention time.Duration) (time.Time, time.Time) {
 	to := query.To
 	if to.IsZero() || to.After(now) {
 		to = now
@@ -93,7 +94,7 @@ func effectiveAnalysisRange(query RequestEventQuery, now time.Time) (time.Time, 
 	if from.IsZero() {
 		from = to.Add(-30 * 24 * time.Hour)
 	}
-	cutoff := now.Add(-s.RequestEventRetention())
+	cutoff := now.Add(-retention)
 	if from.Before(cutoff) {
 		from = cutoff
 	}

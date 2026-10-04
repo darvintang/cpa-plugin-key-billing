@@ -220,15 +220,21 @@ func (r *memoryRepository) EventKeys(from, to, since time.Time) ([]EventKey, err
 		events = append(events, failure.Event)
 	}
 	for _, event := range events {
-		if event.Scope == "" || seen[event.Scope] || event.At.Before(from) || !to.IsZero() && !event.At.Before(to) {
+		if seen[event.Scope] || event.At.Before(from) || !to.IsZero() && !event.At.Before(to) {
 			continue
 		}
 		seen[event.Scope] = true
+		if event.Scope == "" {
+			continue
+		}
 		key := EventKey{Scope: event.Scope, Preview: UnknownKeyPreview}
 		if stored := r.state.Keys[event.Scope]; stored != nil {
 			key.Preview, key.Label, key.DeletedAt = stored.Preview, stored.Label, stored.DeletedAt
 		}
 		keys = append(keys, key)
+	}
+	if seen[""] {
+		keys = append(keys, EventKey{})
 	}
 	return keys, nil
 }

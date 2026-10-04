@@ -101,7 +101,7 @@ func (a *App) listRequestEvents(req ManagementRequest, access viewAccess) Manage
 		Limit:    defaultEventPageSize,
 	}
 	if !access.APIKey {
-		query.KeyScope = strings.TrimSpace(req.Query.Get("api_key"))
+		query.KeyScope, query.KeyScopeEmpty = keyScopeFilter(req.Query)
 	}
 	switch raw := strings.TrimSpace(req.Query.Get("failed")); raw {
 	case "":
@@ -172,7 +172,7 @@ func (a *App) listRequestErrors(req ManagementRequest, access viewAccess) Manage
 		query.StatusCode = value
 	}
 	if !access.APIKey {
-		query.KeyScope = strings.TrimSpace(req.Query.Get("api_key"))
+		query.KeyScope, query.KeyScopeEmpty = keyScopeFilter(req.Query)
 	}
 	if err := requestPageParams(req.Query, &query.Offset, &query.Limit, &query.From, &query.To, &query.SnapshotID); err != nil {
 		return viewErrorResponse(access, err)
@@ -224,7 +224,7 @@ func (a *App) analysis(req ManagementRequest, access viewAccess) ManagementRespo
 	}
 	query := billing.RequestEventQuery{Scope: access.Scope}
 	if !access.APIKey {
-		query.KeyScope = strings.TrimSpace(req.Query.Get("api_key"))
+		query.KeyScope, query.KeyScopeEmpty = keyScopeFilter(req.Query)
 	}
 	if err := timeParam(req.Query, "from", &query.From); err != nil {
 		return viewErrorResponse(access, err)
@@ -245,10 +245,17 @@ func (a *App) analysis(req ManagementRequest, access viewAccess) ManagementRespo
 	if err != nil {
 		return viewErrorResponse(access, err)
 	}
-	if access.APIKey || query.KeyScope != "" {
+	if access.APIKey || query.KeyScope != "" || query.KeyScopeEmpty {
 		view.UsageDistribution.APIKeys = []billing.AnalysisComposition{}
 	}
 	return viewJSON(access, http.StatusOK, view)
+}
+
+func keyScopeFilter(values url.Values) (string, bool) {
+	if values.Get("api_key_empty") == "true" {
+		return "", true
+	}
+	return strings.TrimSpace(values.Get("api_key")), false
 }
 
 func requestPageParams(values url.Values, offset, limit *int, from, to *time.Time, snapshot **int64) error {

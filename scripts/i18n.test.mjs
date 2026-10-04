@@ -5,11 +5,16 @@ import test from "node:test";
 import { parse } from "@babel/parser";
 import { parse as parseHTML } from "parse5";
 
-const root = new URL("../internal/plugin/", import.meta.url);
-const en = JSON.parse(fs.readFileSync(new URL("locales/en.json", root)));
-const zh = JSON.parse(fs.readFileSync(new URL("locales/zh-CN.json", root)));
-const runtime = fs.readFileSync(new URL("i18n.js", root), "utf8");
-const ui = fs.readFileSync(new URL("ui.html", root), "utf8");
+const root = new URL("../internal/plugin/web/", import.meta.url);
+const read = (name) => fs.readFileSync(new URL(name, root), "utf8");
+const en = JSON.parse(read("locales/en.json"));
+const zh = JSON.parse(read("locales/zh-CN.json"));
+const runtime = read("i18n.js");
+const ui = read("ui.html");
+const include = /\/\*([a-z0-9-]+\.(?:css|js))\*\//g;
+// i18n.js names each language in that language, so the catalog checks skip it.
+const scripts = [...ui.matchAll(include)].map((match) => match[1]).filter((name) => name.endsWith(".js") && name !== "i18n.js")
+  .map((name) => [name, read(name)]);
 const slots = (text) => [...text.matchAll(/\{([a-zA-Z][\w]*)\}/g)].map((match) => match[1]).sort();
 
 test("catalog keys and interpolation arguments match", () => {
@@ -49,7 +54,7 @@ test("visible HTML copy is localized, with English fallbacks matching the catalo
 });
 
 test("all literal UI message references exist and scripts parse", () => {
-  for (const [, source] of ui.matchAll(/<script>\s*([\s\S]*?)<\/script>/g)) {
+  for (const [name, source] of scripts) {
     const ast = parse(source);
     const walk = (node) => {
       if (!node || typeof node !== "object") return;
@@ -61,9 +66,17 @@ test("all literal UI message references exist and scripts parse", () => {
       }
     };
     walk(ast);
-    assert.ok(!/\p{Script=Han}/u.test(source), "UI source must use catalog entries");
+    assert.ok(!/\p{Script=Han}/u.test(source), name + " must use catalog entries");
   }
-  for (const [, key] of ui.matchAll(/data-i18n(?:-[\w-]+)?="([^"]+)"/g)) assert.ok(Object.hasOwn(en, key), key);
+  for (const source of [ui, ...scripts.map(([, source]) => source)])
+    for (const [, key] of source.matchAll(/data-i18n(?:-[\w-]+)?="([^"]+)"/g)) assert.ok(Object.hasOwn(en, key), key);
+});
+
+test("inlined scripts parse as the browser receives them", () => {
+  // Application files share one strict script, so redeclarations across files are errors.
+  const blocks = [...ui.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(([, block]) => block.replace(include, (_, name) => read(name)));
+  assert.ok(blocks.length > 1);
+  for (const block of blocks) parse(block);
 });
 
 function environment(stored, hostLanguage, { crossOrigin = false, search = "", catalogs = { en, "zh-CN": zh } } = {}) {
@@ -134,12 +147,10 @@ test("invalid server translation metadata falls back to the original message", (
 
 test("display helpers retain translatable labels instead of freezing the current language", () => {
   const env = environment();
-  const source = [...ui.matchAll(/<script>\s*([\s\S]*?)<\/script>/g)].at(-1)[1];
-  const functions = parse(source).program.body.filter(node => node.type === "FunctionDeclaration" &&
-    ["displayLabel", "matchesTerm"].includes(node.id.name));
+  const functions = scripts.flatMap(([, source]) => parse(source).program.body.filter(node => node.type === "FunctionDeclaration" &&
+    ["displayLabel", "matchesTerm"].includes(node.id.name)).map(node => source.slice(node.start, node.end)));
   assert.equal(functions.length, 2);
-  env.evaluate(`const DISPLAY_SEPARATOR = " · "; const m = window.billingI18n.message;\n` +
-    functions.map(node => source.slice(node.start, node.end)).join("\n"));
+  env.evaluate(`const DISPLAY_SEPARATOR = " · "; const m = window.billingI18n.message;\n` + functions.join("\n"));
   const label = env.evaluate('displayLabel(m("ui.no_email_provided"))');
   assert.ok(env.i18n.isMessage(label));
   assert.equal(String(label), "No email provided");

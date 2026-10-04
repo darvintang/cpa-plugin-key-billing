@@ -35,7 +35,7 @@ type RequestErrorRow struct {
 type RequestErrorQuery struct {
 	Scope, KeyScope, Model, Source, Executor, Provider, ErrorType string
 	StatusCode                                                    int
-	ErrorTypeEmpty                                                bool
+	ErrorTypeEmpty, KeyScopeEmpty                                 bool
 	From, To                                                      time.Time
 	IncludeFilters                                                bool
 	SnapshotID                                                    *int64

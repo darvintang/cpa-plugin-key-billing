@@ -305,8 +305,8 @@ func TestEventKeysFollowTimeRangeAndRetainDeletedIdentities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(keys) != 2 {
-		t.Fatalf("keys = %+v, want distinct normal and error identities only", keys)
+	if len(keys) != 3 || keys[2] != (billing.EventKey{}) {
+		t.Fatalf("keys = %+v, want distinct normal and error identities, then unassigned", keys)
 	}
 	found := map[string]billing.EventKey{}
 	for _, key := range keys {

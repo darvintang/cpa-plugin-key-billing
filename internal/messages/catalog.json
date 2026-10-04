@@ -337,6 +337,22 @@
     "key": "backend.auth_quota_reset_unsupported",
     "formats": []
   },
+  "No reset was used: the Claude account is not rate limited": {
+    "key": "backend.claude_reset_not_limited",
+    "formats": []
+  },
+  "No reset was used: a Claude reset cooldown is active": {
+    "key": "backend.claude_reset_cooldown",
+    "formats": []
+  },
+  "No reset was used: no Claude reset grant is usable": {
+    "key": "backend.claude_reset_unusable",
+    "formats": []
+  },
+  "Claude did not confirm the reset": {
+    "key": "backend.claude_reset_unconfirmed",
+    "formats": []
+  },
   "This CLIProxyAPI version does not support reading auth files": {
     "key": "backend.this_cliproxyapi_version_does_not_support_reading_auth_files",
     "formats": []

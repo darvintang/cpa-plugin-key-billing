@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { assertEquivalent, formatUI } from "./format_ui.mjs";
+import { assertEquivalent, formatCode, formatUI } from "./format_ui.mjs";
 
 const document = ({ css = "", js = "", html = "" } = {}) => `<!doctype html>
 <html>
@@ -41,6 +41,15 @@ test("compacts short CSS, HTML and JavaScript while preserving groups", async ()
   assert.match(after, /function label\(value\) \{ return String\(value\); \}/);
   assert.match(after, /first\(\);\n\n        second\(\);/);
   assert.equal(await formatUI(after), after);
+});
+
+test("formats standalone scripts and stylesheets from column 0", async () => {
+  const script = await formatCode("function label(value) {\n  return String(value);\n}\n", "script");
+  assert.equal(script, "function label(value) { return String(value); }\n");
+  const style = await formatCode(".row {\n  display: flex;\n  gap: 4px;\n}\n", "style");
+  assert.equal(style, ".row { display: flex; gap: 4px; }\n");
+  assert.equal(await formatCode(script, "script"), script);
+  await assert.rejects(formatCode("const = ;", "script"));
 });
 
 test("preserves comments, literals, raw HTML text and thin separators", async () => {

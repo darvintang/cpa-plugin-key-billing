@@ -14,11 +14,13 @@ from urllib.parse import parse_qs, urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UI_PATH = ROOT / "internal" / "plugin" / "ui.html"
+UI_DIR = ROOT / "internal" / "plugin" / "web"
+# Matches the placeholders internal/plugin/ui.go replaces with sibling files.
+UI_INCLUDE = re.compile(r"/\*([a-z0-9-]+\.(?:css|js))\*/")
 API_BASE = "/v0/management/plugins/cpa-key-billing-plus"
 RESOURCE_BASE = "/v0/resource/plugins/cpa-key-billing-plus"
-# Shared credential policy mirrors the plugin; host weights remain per file.
-CREDENTIAL_SETTINGS = {"max_concurrency": 0, "enabled": False, "mode": "interval", "interval_minutes": 60, "time_of_day": "09:00", "timezone": "Asia/Shanghai", "model": "", "prompt": "Reply with OK."}
+# Shared policy fixture retains the fork's worker and sticky-session settings.
+CREDENTIAL_SETTINGS = {"max_concurrency": 0, "session_ttl_minutes": 5, "enabled": False, "mode": "interval", "interval_minutes": 60, "time_of_day": "09:00", "timezone": "Asia/Shanghai", "model": "", "prompt": "Reply with OK."}
 AUTH_WEIGHTS = {}
 NOW = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 CALLER_SCOPE_SALT = b"cli-proxy-api:caller-scope:v1\0"
@@ -55,6 +57,8 @@ HOST_SHELL = r"""<!doctype html>
 }
 html[data-host=cpamp]{
   --app-bg:#eff2f7;--app-bg-gradient:linear-gradient(120deg,#f0f7ff 0%,#e7f2ff 50%,#edf7ff 100%);
+  --app-bg-blob-1-start:#7aa2ff;--app-bg-blob-1-end:#b6d4ff;--app-bg-blob-2-start:#6bc5ff;--app-bg-blob-2-end:#7debdc;
+  --app-bg-blob-1-opacity:.5;--app-bg-blob-2-opacity:.5;--app-bg-blob-blur:60px;--glass-backdrop-filter:blur(20px);
   --app-surface:rgba(255,255,255,.94);--app-surface-strong:#fff;--app-surface-muted:rgba(255,255,255,.68);
   --app-border:rgba(15,23,42,.08);--app-border-strong:rgba(15,23,42,.12);
   --app-text-primary:#2c3e50;--app-text-regular:#5f6c7b;--app-text-muted:#8b95a6;
@@ -84,6 +88,8 @@ html[data-host=cpamp]{
 }
 html[data-host=cpamp][data-theme=dark]{
   --app-bg:#0a0a0a;--app-bg-gradient:linear-gradient(120deg,#0b1324 0%,#0a1426 50%,#091521 100%);
+  --app-bg-blob-1-start:#1b2a55;--app-bg-blob-1-end:#27325c;--app-bg-blob-2-start:#0f3d59;--app-bg-blob-2-end:#0c4a4f;
+  --app-bg-blob-1-opacity:.35;--app-bg-blob-2-opacity:.3;--app-bg-blob-blur:70px;
   --app-surface:rgba(24,28,40,.9);--app-surface-strong:#1b1f2a;--app-surface-muted:rgba(255,255,255,.08);
   --app-border:rgba(255,255,255,.08);--app-border-strong:rgba(255,255,255,.12);
   --app-text-primary:#e5e5e5;--app-text-regular:#a3a3a3;--app-text-muted:#7a7a7a;
@@ -364,6 +370,7 @@ AUTH_FILES = [
         "email": "dev-team@example.com",
         "disabled": False,
         "unavailable": False,
+        "priority": 10,
         "quota_supported": True,
     },
     {
@@ -373,6 +380,7 @@ AUTH_FILES = [
         "email": "platform@example.com",
         "disabled": False,
         "unavailable": False,
+        "priority": 0,
         "quota_supported": True,
     },
     {
@@ -382,6 +390,7 @@ AUTH_FILES = [
         "email": "automation@example.com",
         "disabled": False,
         "unavailable": False,
+        "priority": 99,
         "quota_supported": True,
     },
     {
@@ -391,6 +400,7 @@ AUTH_FILES = [
         "email": "ai-lab@example.com",
         "disabled": False,
         "unavailable": False,
+        "priority": 5,
         "quota_supported": True,
     },
     {
@@ -400,6 +410,7 @@ AUTH_FILES = [
         "email": "research@example.com",
         "disabled": False,
         "unavailable": True,
+        "priority": 0,
         "quota_supported": True,
     },
     {
@@ -409,6 +420,7 @@ AUTH_FILES = [
         "email": "research@example.com",
         "disabled": False,
         "unavailable": False,
+        "priority": 1,
         "quota_supported": True,
     },
 ]
@@ -435,6 +447,13 @@ AUTH_FILES.sort(
 )
 
 
+def auth_file_views(files):
+    # Mirrors authQuotaAvailability in internal/plugin/auth_files.go.
+    return [{**item, "quota_supported": False, "quota_unavailable_reason": "Auth file is disabled",
+             "quota_unavailable_message": {"message_key": "backend.auth_file_is_disabled"}}
+            if item["disabled"] else item for item in files]
+
+
 def quota_row(label, remaining_percent, reset_seconds, **extra):
     return {
         "label": label,
@@ -446,7 +465,8 @@ def quota_row(label, remaining_percent, reset_seconds, **extra):
 
 AUTH_FILE_QUOTAS = {
     "auth-demo-codex-pro": {
-        "plan": "pro-20x",
+        "plan": "Pro 200",
+        "credit_balance": "126.4",
         "rate_limit_reset_credits_available_count": 2,
         "rate_limit_reset_credits": [
             {"expires_at": iso(NOW + timedelta(days=13, hours=14))},
@@ -467,7 +487,8 @@ AUTH_FILE_QUOTAS = {
         ],
     },
     "auth-demo-codex-plus": {
-        "plan": "plus",
+        "plan": "Plus",
+        "credit_balance": "0",
         "rate_limit_reset_credits_available_count": 1,
         "rate_limit_reset_credits": [{"expires_at": iso(NOW + timedelta(days=7))}],
         "quota": [
@@ -477,6 +498,7 @@ AUTH_FILE_QUOTAS = {
     },
     "auth-demo-claude": {
         "plan": "Team",
+        "rate_limit_reset_credits_available_count": 1,
         "quota": [
             quota_row("5 小时限额", 76, 12600),
             quota_row("周限额", 59, 388800),
@@ -513,6 +535,8 @@ AUTH_FILE_QUOTAS = {
         ],
     },
     "auth-demo-xai-active": {
+        "credit_balance": "12.34",
+        "credit_currency": "USD",
         "quota": [
             quota_row("周限额", 78, 410400),
             {
@@ -539,8 +563,8 @@ def auth_file_quota(query):
         "fetched_at": iso(NOW),
         **quota,
     }
-    english = json.loads((UI_PATH.parent / "locales/en.json").read_text())
-    chinese = json.loads((UI_PATH.parent / "locales/zh-CN.json").read_text())
+    english = json.loads((UI_DIR / "locales/en.json").read_text())
+    chinese = json.loads((UI_DIR / "locales/zh-CN.json").read_text())
     labels = {value: key for key, value in chinese.items() if key.startswith("backend.") and "{" not in value}
     result["quota"] = [dict(row) for row in result["quota"]]
     for row in result["quota"]:
@@ -778,13 +802,18 @@ FAILURE_EVENT_SAMPLES = [
     event_sample(1, "codex · dev-team@example.com", "codex", "gpt-5.5", "CodexWebsocketsExecutor", "high", "auto", 4338, 237, 0, (0, 0, 0, 0), (5, 0.5, 5, 30), failed=True),
 ]
 
-EVENT_SAMPLES = SUCCESS_EVENT_SAMPLES * 2 + FAILURE_EVENT_SAMPLES
+UNASSIGNED_EVENT_SAMPLES = [
+    event_sample(None, "codex · dev-team@example.com", "codex", "gpt-5.5", "CodexWebsocketsExecutor", "medium", "auto", 3120, 1288, 12, (2048, 31744, 0, 96), (5, 0.5, 5, 30)),
+    event_sample(None, "codex · dev-team@example.com", "codex", "gpt-5.5", "CodexWebsocketsExecutor", "medium", "auto", 1810, 0, 0, (0, 0, 0, 0), (5, 0.5, 5, 30), failed=True),
+]
+
+EVENT_SAMPLES = SUCCESS_EVENT_SAMPLES * 2 + FAILURE_EVENT_SAMPLES + UNASSIGNED_EVENT_SAMPLES
 
 
 def make_request_events():
     entries = []
     for index, sample in enumerate(EVENT_SAMPLES):
-        key = KEYS[sample["key_index"]]
+        key = {"scope": "", "preview": "", "label": ""} if sample["key_index"] is None else KEYS[sample["key_index"]]
         entries.append({
             "id": str(index + 1),
             "at": iso(NOW - timedelta(hours=index * 22, minutes=(index % 4) * 11)),
@@ -805,12 +834,20 @@ def source_filter_token(scope, source):
 def source_filter_options(scope, sources):
     return [{"value": source_filter_token(scope, source), "label": source} for source in sources]
 
+# None selects every key; an empty scope selects unassigned events.
+def selected_scope(query, scope):
+    if scope:
+        return None
+    if query.get("api_key_empty", [""])[0] == "true":
+        return ""
+    return query.get("api_key", [""])[0] or None
+
 def event_snapshot(query):
     return int(query.get("snapshot_id", [str(max((int(entry["id"]) for entry in REQUEST_EVENTS), default=0))])[0])
 
 def request_event_view(query, scope=""):
     snapshot = event_snapshot(query)
-    selected_key = "" if scope else query.get("api_key", [""])[0]
+    selected_key = selected_scope(query, scope)
     selected_model = query.get("model", [""])[0]
     selected_source = query.get("source", [""])[0]
     selected_provider = query.get("provider", [""])[0]
@@ -820,9 +857,6 @@ def request_event_view(query, scope=""):
     limit = max(0, int(query.get("limit", ["0"])[0] or 0))
     time_matched = filter_event_time([entry for entry in REQUEST_EVENTS
                                      if int(entry["id"]) <= snapshot and (not scope or entry["scope"] == scope)], query)
-    # Filter before pagination, matching the SQL endpoint's GPT-only view.
-    if query.get("gpt_only") == ["true"]:
-        time_matched = [entry for entry in time_matched if (entry.get("billing_model") or entry.get("upstream_model", "")).split("/")[-1].lower().startswith("gpt-")]
     time_matched.sort(key=lambda entry: (entry["at"], int(entry["id"])), reverse=True)
     source_values = sorted({entry.get("source", "") for entry in time_matched} - {""}, key=str.lower)
     filter_options = {
@@ -838,7 +872,7 @@ def request_event_view(query, scope=""):
     counts = {"all": 0, "normal": 0, "failed": 0}
     matched = []
     for entry in time_matched:
-        if selected_key and entry.get("scope") != selected_key:
+        if selected_key is not None and entry.get("scope") != selected_key:
             continue
         if selected_model and (entry.get("billing_model") or entry.get("upstream_model")) != selected_model:
             continue
@@ -962,6 +996,7 @@ def request_error(event_index, message, status=0, error_type="", code="", transp
 
 
 ERRORS = [
+    request_error(30, "Rate limit reached for requests", status=429, error_type="rate_limit_error"),
     request_error(
         28,
         "Responses websocket connection limit reached (60 minutes). Create a new websocket connection to continue.",
@@ -1004,7 +1039,7 @@ PLUGIN_LOGS = [
         "at": iso(NOW - timedelta(minutes=11)),
         "level": "info",
         "message": (
-            "已加载计费数据库 /srv/cli-proxy-api/plugins/cpa-key-billing-plus-state-v1.db："
+            "已加载计费数据库 /srv/cli-proxy-api/plugins/cpa-key-billing-state-v1.db："
             "8 个 API Key、3 个订阅计划、29 条请求事件。已启用。"
         ),
     },
@@ -1050,7 +1085,7 @@ def error_view(query, scope=""):
                              if int(entry["id"]) <= snapshot and (not scope or entry["scope"] == scope)], query)
     rows.sort(key=lambda entry: (entry["at"], int(entry["id"])), reverse=True)
     selected = {
-        "api_key": "" if scope else query.get("api_key", [""])[0],
+        "api_key": selected_scope(query, scope),
         "model": query.get("model", [""])[0],
         "source": query.get("source", [""])[0],
         "provider": query.get("provider", [""])[0],
@@ -1066,7 +1101,7 @@ def error_view(query, scope=""):
     counts = {}
     empty_type = query.get("error_type_empty", [""])[0] == "true"
     for entry in rows:
-        if selected["api_key"] and entry["scope"] != selected["api_key"]:
+        if selected["api_key"] is not None and entry["scope"] != selected["api_key"]:
             continue
         if selected["model"] and entry["billing_model"] != selected["model"]:
             continue
@@ -1107,8 +1142,8 @@ def error_view(query, scope=""):
 
 def analysis_view(query, scope=""):
     rows = filter_event_time([entry for entry in REQUEST_EVENTS if not scope or entry["scope"] == scope], query)
-    selected = query.get("api_key", [""])[0]
-    if selected and not scope:
+    selected = selected_scope(query, scope)
+    if selected is not None:
         rows = [entry for entry in rows if entry["scope"] == selected]
 
     def distribution(field, label_field=None, unknown="未知"):
@@ -1229,7 +1264,7 @@ def analysis_view(query, scope=""):
         },
         "trends": trends,
         "usage_distribution": {
-            "api_keys": [] if scope or selected else distribution("scope", "label"),
+            "api_keys": [] if scope or selected is not None else distribution("scope", "label", unknown=""),
             "models": distribution("billing_model", unknown="未知模型"),
             "sources": distribution("source", unknown="未知来源"),
         },
@@ -1302,9 +1337,7 @@ def route_rows():
 
 def payload_for(path, query):
     if path == f"{API_BASE}/credential-settings":
-        return {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"], "last_run_at": "2026-10-02T12:00:00Z", "next_run_at": "2026-10-03T01:00:00Z" if CREDENTIAL_SETTINGS["enabled"] else None}
-    if path == "/v0/management/auth-files":
-        return {"files": [{**file, "weight": AUTH_WEIGHTS.get(file["name"], 1)} for file in AUTH_FILES]}
+        return {"settings": CREDENTIAL_SETTINGS, "running": CREDENTIAL_SETTINGS["enabled"]}
     if path == f"{API_BASE}/keys":
         refresh_route_counts()
         return {"keys": key_rows()}
@@ -1321,8 +1354,11 @@ def payload_for(path, query):
         return model_prices(query, include_custom=query.get("include_custom", ["true"])[0] == "true")
     if path == f"{API_BASE}/events/keys":
         scopes = {event["scope"] for event in filter_event_time(REQUEST_EVENTS, query)}
-        return [{field: key[field] for field in ("scope", "preview", "label", "deleted_at") if field in key}
+        keys = [{field: key[field] for field in ("scope", "preview", "label", "deleted_at") if field in key}
                 for key in KEYS if key["scope"] in scopes]
+        if "" in scopes:
+            keys.append({"scope": "", "preview": ""})
+        return keys
     if path == f"{API_BASE}/events":
         return request_event_view(query)
     if path == f"{API_BASE}/errors":
@@ -1341,7 +1377,7 @@ def payload_for(path, query):
         return {"entries": entries[:limit], "level_counts": counts,
                 "next_before_id": entries[limit - 1]["id"] if len(entries) > limit else 0}
     if path == f"{API_BASE}/auth-files":
-        return {"files": [{**file, "current_concurrency": 2, "max_concurrency": CREDENTIAL_SETTINGS["max_concurrency"]} for file in AUTH_FILES]}
+        return {"files": [{**file, "weight": AUTH_WEIGHTS.get(file["name"], 1), "current_concurrency": 2, "max_concurrency": CREDENTIAL_SETTINGS["max_concurrency"]} for file in auth_file_views(AUTH_FILES)]}
     if path == f"{API_BASE}/auth-files/quota":
         return auth_file_quota(query)
     if path == f"{API_BASE}/prices/reference":
@@ -1433,12 +1469,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(body)
             return
         if parsed.path in ("/", "/ui"):
-            body = UI_PATH.read_text()
-            catalogs = {language: json.loads((UI_PATH.parent / "locales" / f"{language}.json").read_text())
+            catalogs = {language: json.loads((UI_DIR / "locales" / f"{language}.json").read_text())
                         for language in ("en", "zh-CN")}
-            script = "const BILLING_MESSAGES = " + json.dumps(catalogs).replace("<", "\\u003c") + ";\n"
-            script += (UI_PATH.parent / "i18n.js").read_text()
-            body = body.replace("// BILLING_I18N", script)
+            messages = "const BILLING_MESSAGES = " + json.dumps(catalogs).replace("<", "\\u003c") + ";\n"
+
+            def include(match):
+                name = match.group(1)
+                return (messages if name == "i18n.js" else "") + (UI_DIR / name).read_text()
+
+            body = UI_INCLUDE.sub(include, (UI_DIR / "ui.html").read_text())
             if self.host_mode != "standalone":
                 body = body.replace(
                     "</head>",
@@ -1487,7 +1526,7 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path.endswith("/errors"):
                 self.send_json(200, error_view(parse_qs(parsed.query), LIVE_KEYS[index]["scope"]))
             elif parsed.path.endswith("/auth-files"):
-                self.send_json(200, {"files": account_auth_files(index)})
+                self.send_json(200, {"files": auth_file_views(account_auth_files(index))})
             elif parsed.path.endswith("/auth-files/quota"):
                 query = parse_qs(parsed.query)
                 allowed = {
@@ -1525,7 +1564,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": {"message": "Invalid quota reset request ID"}})
         elif auth_file is None or quota is None:
             self.send_json(404, {"error": {"message": "Auth file does not exist"}})
-        elif auth_file["category"] != "codex" or auth_file.get("disabled"):
+        elif auth_file["category"] not in {"codex", "claude"} or auth_file.get("disabled"):
             self.send_json(422, {"error": {"message": "This auth file cannot reset quotas"}})
         elif query.get("auth_revision") != [auth_file["cache_revision"]] or query.get("auth_name") != [auth_file["name"]]:
             self.send_json(409, {"error": {"message": "Auth file changed; refresh the auth file list and try again"}})
@@ -1568,10 +1607,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(request_body)
             AUTH_WEIGHTS[body["name"]] = body["weight"]
             self.send_json(200, {"saved": True})
-        elif route == ("POST", f"{API_BASE}/auth-files/quota/reset"):
-            self.reset_auth_quota(parsed, AUTH_FILES)
         elif route == ("DELETE", f"{API_BASE}/database/request-events"):
-            # Match the production retention floor and cascade error details.
             days = json.loads(request_body or b"{}").get("days")
             if type(days) is not int or not 4 <= days <= 36500:
                 self.send_json(400, {"error": "Retention days must be an integer between 4 and 36500"})
@@ -1581,6 +1617,16 @@ class Handler(BaseHTTPRequestHandler):
             REQUEST_EVENTS[:] = [entry for entry in REQUEST_EVENTS if entry["id"] not in removed]
             ERRORS[:] = [entry for entry in ERRORS if entry["id"] not in removed]
             self.send_json(200, {"cleared": len(removed)})
+        elif route == ("POST", f"{API_BASE}/auth-files/quota/reset"):
+            self.reset_auth_quota(parsed, AUTH_FILES)
+        elif route == ("PATCH", "/v0/management/auth-files/status"):
+            body = json.loads(request_body or b"{}")
+            item = next((item for item in AUTH_FILES if item["name"] == body.get("name")), None)
+            if item is None:
+                self.send_json(404, {"error": "auth file not found"})
+                return
+            item["disabled"] = bool(body.get("disabled"))
+            self.send_json(200, {"status": "ok", "disabled": item["disabled"]})
         elif route == ("DELETE", f"{API_BASE}/plugin-logs"):
             cleared = len(PLUGIN_LOGS)
             PLUGIN_LOGS.clear()

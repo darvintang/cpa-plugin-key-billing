@@ -25,7 +25,7 @@ func TestAuthFilesExposeOnlyDisplayFieldsInCategoryOrder(t *testing.T) {
 			{"auth_index":"api-1","name":"openai-api-key.json","type":"openai","provider":"openai","account_type":"api_key","account":"sk-upstream-secret"},
 			{"auth_index":"x-2","name":"zeta.json","type":"xai","email":"z@example.com","disabled":true,"path":"/secret/zeta.json","account":"sk-upstream-secret","id_token":"secret"},
 			{"auth_index":"c-2","name":"zeta.json","type":"codex","id_token":{"plan_type":"pro"}},
-			{"auth_index":"c-1","name":"Alpha.json","type":"codex","email":"user@example.com","modtime":"2026-09-02T01:02:03Z","id_token":{"planType":"prolite"}},
+			{"auth_index":"c-1","name":"Alpha.json","type":"codex","email":"user@example.com","priority":99,"modtime":"2026-09-02T01:02:03Z","id_token":{"planType":"prolite"}},
 			{"auth_index":"a-1","name":"antigravity.json","type":"antigravity"},
 			{"auth_index":"cl-1","name":"claude.json","type":"claude"}
 		]}`), nil
@@ -53,6 +53,10 @@ func TestAuthFilesExposeOnlyDisplayFieldsInCategoryOrder(t *testing.T) {
 	if payload.Files[2].Email != "user@example.com" {
 		t.Fatalf("email = %q, want CPA email", payload.Files[2].Email)
 	}
+	// The host omits the default priority, which the UI still shows as P0.
+	if payload.Files[2].Priority != 99 || !strings.Contains(encoded, `"priority":0`) {
+		t.Fatalf("priorities = %d, body = %s", payload.Files[2].Priority, encoded)
+	}
 	if payload.Files[4].QuotaSupported || payload.Files[4].QuotaReason != "Auth file is disabled" {
 		t.Fatalf("disabled quota availability = %+v", payload.Files[4])
 	}
@@ -62,18 +66,6 @@ func TestAuthFilesExposeOnlyDisplayFieldsInCategoryOrder(t *testing.T) {
 	for _, forbidden := range []string{"disk-only", "openai-api-key", "sk-upstream-secret", "/secret/zeta.json", "id_token", "secret", `"account"`, `"path"`} {
 		if strings.Contains(encoded, forbidden) {
 			t.Fatalf("response leaked %q: %s", forbidden, encoded)
-		}
-	}
-}
-
-func TestNormalizeCodexPlan(t *testing.T) {
-	tests := map[string]string{
-		"plus": "plus", " PRO ": "pro-20x", "prolite": "pro-5x", "pro-lite": "pro-5x",
-		"pro_lite": "pro-5x", "pro-5x": "pro-5x", "pro-20x": "pro-20x", "Custom Plan": "Custom Plan",
-	}
-	for input, want := range tests {
-		if got := normalizeCodexPlan(input); got != want {
-			t.Errorf("normalizeCodexPlan(%q) = %q, want %q", input, got, want)
 		}
 	}
 }
@@ -337,7 +329,7 @@ func TestCodexQuotaPreservesAdditionalDynamicWindows(t *testing.T) {
 			if request.Headers.Get("Authorization") != "Bearer dummy-token" || request.Headers.Get("Chatgpt-Account-Id") != "dummy-account" {
 				t.Fatalf("headers = %#v", request.Headers)
 			}
-			body := `{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":38,"limit_window_seconds":604800}},"additional_rate_limits":[{"limit_name":"GPT-5.3-Codex-Spark","rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":18000},"secondary_window":{"used_percent":0,"limit_window_seconds":604800}}}],"rate_limit_reset_credits":{"available_count":1}}`
+			body := `{"plan_type":"pro","credits":{"balance":"12.5"},"rate_limit":{"primary_window":{"used_percent":38,"limit_window_seconds":604800}},"additional_rate_limits":[{"limit_name":"GPT-5.3-Codex-Spark","rate_limit":{"primary_window":{"used_percent":0,"limit_window_seconds":18000},"secondary_window":{"used_percent":0,"limit_window_seconds":604800}}}],"rate_limit_reset_credits":{"available_count":1}}`
 			return mustJSONRaw(t, hostHTTPResponse{StatusCode: http.StatusOK, Body: []byte(body)}), nil
 		default:
 			t.Fatalf("unexpected host method %q", method)
@@ -355,7 +347,7 @@ func TestCodexQuotaPreservesAdditionalDynamicWindows(t *testing.T) {
 	if endpoint != "https://chatgpt.com/backend-api/wham/usage" {
 		t.Fatalf("endpoint = %q", endpoint)
 	}
-	if result.Plan != "pro-20x" || len(result.Quota) != 3 {
+	if result.Plan != "Pro 200" || result.CreditBalance != "12.5" || len(result.Quota) != 3 {
 		t.Fatalf("quota = %+v", result)
 	}
 	if len(result.RateLimitResetCredits) != 1 || result.RateLimitResetCredits[0].ExpiresAt != "2026-10-04T02:27:00Z" {
@@ -484,6 +476,49 @@ func TestClaudeQuotaUsesFableLimitAndCanonicalTeamPlan(t *testing.T) {
 	}
 }
 
+func TestClaudeResetSpendsOnlyAUsableGrant(t *testing.T) {
+	const resetID = "00112233-4455-4677-8899-aabbccddeeff"
+	grants := `[{"id":"a","resets_total":1,"resets_left":1,"usable_now":true},{"id":"b","resets_total":1,"resets_left":1,"usable_now":true}]`
+	for _, tc := range []struct {
+		name, status, result, claimed, want string
+	}{
+		{"recommended grant", `{"eligible":true,"at_limit":true,"next_grant_id":"b","grants":` + grants + `}`, `{"result":"reset"}`, "b", ""},
+		{"not rate limited", `{"eligible":true,"at_limit":false,"grants":` + grants + `}`, "", "", errClaudeResetNotLimited.Error()},
+		{"unconfirmed result", `{"eligible":true,"at_limit":true,"grants":` + grants + `}`, `{}`, "a", "Claude did not confirm the reset"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newConfiguredApp(t)
+			claimed := ""
+			app.SetHostCaller(func(method string, payload any) (json.RawMessage, error) {
+				if method == hostAuthGet {
+					return json.RawMessage(`{"json":{"access_token":"dummy-upstream-token"}}`), nil
+				}
+				request := payload.(hostHTTPRequest)
+				body := map[string]string{
+					"https://api.anthropic.com/api/oauth/profile":                          `{"organization":{"uuid":"00112233-4455-6677-8899-AABBCCDDEEFF"}}`,
+					"https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1": `{"cedar_ember":` + tc.status + `}`,
+				}[request.URL]
+				if request.Method == http.MethodPost {
+					var claim map[string]string
+					if request.URL != "https://api.anthropic.com/api/organizations/00112233-4455-6677-8899-aabbccddeeff/reset_rate_limits" ||
+						json.Unmarshal(request.Body, &claim) != nil || claim["program"] != "cedar_ember" || claim["request_id"] != resetID {
+						t.Fatalf("unexpected claim: %s %s", request.URL, request.Body)
+					}
+					claimed, body = claim["grant_id"], tc.result
+				}
+				return mustJSONRaw(t, hostHTTPResponse{StatusCode: http.StatusOK, Body: []byte(body)}), nil
+			})
+			got := ""
+			if err := app.resetClaudeQuota("", hostAuthFile{AuthIndex: "claude-1", Type: "claude"}, resetID); err != nil {
+				got = err.Error()
+			}
+			if claimed != tc.claimed || got != tc.want {
+				t.Fatalf("claimed = %q, err = %q", claimed, got)
+			}
+		})
+	}
+}
+
 func TestClaudeQuotaOmitsDisabledExtraUsage(t *testing.T) {
 	app := newConfiguredApp(t)
 	profileCalled := false
@@ -597,7 +632,7 @@ func TestCredentialProxyFailsInsteadOfSendingDirectRequest(t *testing.T) {
 func TestXAIQuotaCombinesWeeklyMonthlyAndOnDemand(t *testing.T) {
 	responses := map[string]string{
 		"https://cli-chat-proxy.grok.com/v1/billing?format=credits": `{"config":{"creditUsagePercent":62.5,"currentPeriod":{"end":"2026-09-08T00:00:00Z"}}}`,
-		"https://cli-chat-proxy.grok.com/v1/billing":                `{"config":{"monthlyLimit":{"val":1000},"used":{"val":1250},"onDemandCap":{"val":500},"billingPeriodEnd":"2026-10-01T00:00:00Z"}}`,
+		"https://cli-chat-proxy.grok.com/v1/billing":                `{"config":{"monthlyLimit":{"val":1000},"used":{"val":1250},"onDemandCap":{"val":500},"prepaidBalance":{"val":1234},"billingPeriodEnd":"2026-10-01T00:00:00Z"}}`,
 	}
 	app := newConfiguredApp(t)
 	app.SetHostCaller(func(_ string, payload any) (json.RawMessage, error) {
@@ -624,6 +659,9 @@ func TestXAIQuotaCombinesWeeklyMonthlyAndOnDemand(t *testing.T) {
 	monthly := result.Quota[1]
 	if monthly.Currency != "USD" || monthly.Used == nil || *monthly.Used != 10 || monthly.Limit == nil || *monthly.Limit != 10 || monthly.RemainingPercent == nil || *monthly.RemainingPercent != 0 {
 		t.Fatalf("monthly quota = %+v", monthly)
+	}
+	if result.CreditBalance != "12.34" || result.CreditCurrency != "USD" {
+		t.Fatalf("prepaid credits = %q %q", result.CreditBalance, result.CreditCurrency)
 	}
 }
 
@@ -686,7 +724,7 @@ func TestAuthQuotaReset(t *testing.T) {
 			case "missing file":
 				req.Query.Set("auth_index", "missing")
 			case "unsupported provider":
-				file.Type = "claude"
+				file.Type = "xai"
 			case "disabled file":
 				file.Disabled = true
 			case "denied credential", "outside allowlist":

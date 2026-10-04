@@ -51,6 +51,7 @@ type RequestEventQuery struct {
 	// a query parameter: account endpoints derive it from the presented API key.
 	Scope          string
 	KeyScope       string
+	KeyScopeEmpty  bool
 	Model          string
 	Source         string
 	Executor       string
@@ -105,6 +106,7 @@ func (s *Store) RequestEvents(query RequestEventQuery) (RequestEventView, error)
 }
 
 // EventKey identifies a key with at least one request or error in the time range.
+// An empty Scope represents unassigned events and sorts last.
 type EventKey struct {
 	Scope     string    `json:"scope"`
 	Preview   string    `json:"preview"`

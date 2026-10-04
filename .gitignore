@@ -11,3 +11,6 @@ node_modules/
 .agents
 .playwright/
 .playwright-cli/
+.env
+.env.*
+!.env.example

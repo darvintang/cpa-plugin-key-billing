@@ -1,13 +1,13 @@
 package plugin
 
 import (
-	"bytes"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
+	"regexp"
 )
 
-//go:embed ui.html i18n.js locales/*.json
+//go:embed web/ui.html web/*.css web/*.js web/locales/*.json
 var uiFiles embed.FS
 
 // Assemble once. The browser receives one self-contained HTML resource.
@@ -15,9 +15,12 @@ var uiHTML = buildUI()
 
 var pluginLogo = "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(pluginIconSVG))
 
+// uiInclude marks where web/ui.html inlines a sibling stylesheet or script.
+var uiInclude = regexp.MustCompile(`/\*([a-z0-9-]+\.(?:css|js))\*/`)
+
 func buildUI() []byte {
 	read := func(name string) []byte {
-		data, err := uiFiles.ReadFile(name)
+		data, err := uiFiles.ReadFile("web/" + name)
 		if err != nil {
 			panic(err)
 		}
@@ -35,10 +38,15 @@ func buildUI() []byte {
 	if err != nil {
 		panic(err)
 	}
-	script := append([]byte("const BILLING_MESSAGES = "), data...)
-	script = append(script, ';', '\n')
-	script = append(script, read("i18n.js")...)
-	return bytes.Replace(read("ui.html"), []byte("// BILLING_I18N"), script, 1)
+	return uiInclude.ReplaceAllFunc(read("ui.html"), func(marker []byte) []byte {
+		name := string(uiInclude.FindSubmatch(marker)[1])
+		if name != "i18n.js" {
+			return read(name)
+		}
+		script := append([]byte("const BILLING_MESSAGES = "), data...)
+		script = append(script, ';', '\n')
+		return append(script, read(name)...)
+	})
 }
 
 // The inline SVG keeps the plugin logo independent of external image files.

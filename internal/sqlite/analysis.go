@@ -30,7 +30,7 @@ func (d *DB) Analysis(query billing.RequestEventQuery, since time.Time) (billing
 	}
 	defer rows.Close()
 	keys, models, sources := analysisGroups{}, analysisGroups{}, analysisGroups{}
-	includeKeys := strings.TrimSpace(query.Scope) == "" && strings.TrimSpace(query.KeyScope) == ""
+	includeKeys := strings.TrimSpace(query.Scope) == "" && strings.TrimSpace(query.KeyScope) == "" && !query.KeyScopeEmpty
 	summary, trends := &view.Summary, &view.Trends
 	for rows.Next() {
 		var index int

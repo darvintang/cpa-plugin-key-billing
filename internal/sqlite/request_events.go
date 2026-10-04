@@ -185,6 +185,9 @@ func eventFilter(source string, query billing.RequestEventQuery, since time.Time
 			args = append(args, value)
 		}
 	}
+	if query.KeyScopeEmpty {
+		where += " AND r.scope = ''"
+	}
 	return where, args
 }
 
@@ -282,16 +285,16 @@ func (d *DB) EventKeys(from, to, since time.Time) ([]billing.EventKey, error) {
 	where, args := eventTimeFilter("FROM request_events r WHERE r.at >= ?", from, to, since)
 	// Seek once per scope, including historical scopes absent from api_keys.
 	rows, err := d.db.Query(`WITH RECURSIVE scopes(scope) AS (
-		SELECT min(scope) FROM request_events WHERE scope > ''
+		SELECT min(scope) FROM request_events
 		UNION ALL
 		SELECT (SELECT min(scope) FROM request_events WHERE scope > scopes.scope)
 		FROM scopes WHERE scopes.scope IS NOT NULL
-	) SELECT scopes.scope, coalesce(NULLIF(k.preview, ''), ?),
+	) SELECT scopes.scope, CASE scopes.scope WHEN '' THEN '' ELSE coalesce(NULLIF(k.preview, ''), ?) END,
         coalesce(k.label, ''), coalesce(k.deleted_at, 0)
         FROM scopes
         LEFT JOIN api_keys k ON k.scope = scopes.scope
         WHERE scopes.scope IS NOT NULL AND EXISTS (SELECT 1 `+where+` AND r.scope = scopes.scope)
-        ORDER BY coalesce(NULLIF(k.label, ''), k.preview, '') COLLATE NOCASE, scopes.scope`,
+        ORDER BY scopes.scope = '', coalesce(NULLIF(k.label, ''), k.preview, '') COLLATE NOCASE, scopes.scope`,
 		append([]any{billing.UnknownKeyPreview}, args...)...)
 	if err != nil {
 		return nil, fmt.Errorf("Read event API key filters: %w", err)

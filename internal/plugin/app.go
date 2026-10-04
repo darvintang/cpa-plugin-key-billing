@@ -167,7 +167,7 @@ func registration() Registration {
 				{
 					Name:        "allow_api_key_quota_reset",
 					Type:        "boolean",
-					Description: "Allow API key users to reset Codex auth file quotas using upstream reset credits",
+					Description: "Allow API key users to reset Codex and Claude auth file quotas using upstream resets",
 				},
 				{
 					Name:        "state_file",

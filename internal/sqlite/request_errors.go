@@ -33,8 +33,8 @@ func requestErrorFilter(query billing.RequestErrorQuery, since time.Time) (strin
 	}
 	source += " JOIN request_events r ON r.id = e.request_event_id WHERE r.at >= ?"
 	where, args := eventFilter(source, billing.RequestEventQuery{
-		Scope: query.Scope, KeyScope: query.KeyScope, Model: query.Model,
-		Source: query.Source, Executor: query.Executor, Provider: query.Provider,
+		Scope: query.Scope, KeyScope: query.KeyScope, KeyScopeEmpty: query.KeyScopeEmpty,
+		Model: query.Model, Source: query.Source, Executor: query.Executor, Provider: query.Provider,
 		From: query.From, To: query.To, SnapshotID: query.SnapshotID,
 	}, since)
 	if query.StatusCode > 0 {

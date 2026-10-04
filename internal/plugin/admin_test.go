@@ -754,6 +754,27 @@ func TestEventKeyOptionsIgnorePageFilters(t *testing.T) {
 	}, nil, http.StatusBadRequest, nil)
 }
 
+func TestUnassignedKeyFilter(t *testing.T) {
+	app := newConfiguredApp(t)
+	const apiKey = "sk-demo-keyed-0001"
+	callOK(t, app, http.MethodPost, routeKeysSync, nil, map[string]any{"keys": []string{apiKey}}, http.StatusOK, nil)
+	billOneRequest(t, app, apiKey, 100)
+	now := app.store.Now()
+	publishUsageRecord(t, app, UsageRecord{Provider: "openai", Model: "gpt-5.5", Generate: true, RequestedAt: now, Failed: true})
+	from, to := now.Add(-time.Hour).Format(time.RFC3339), now.Add(time.Hour).Format(time.RFC3339)
+	filter := url.Values{"api_key_empty": {"true"}, "from": {from}, "to": {to}}
+	var events billing.RequestEventView
+	var failures billing.RequestErrorView
+	var analysis billing.AnalysisView
+	callOK(t, app, http.MethodGet, routeEvents, filter, nil, http.StatusOK, &events)
+	callOK(t, app, http.MethodGet, routeErrors, filter, nil, http.StatusOK, &failures)
+	callOK(t, app, http.MethodGet, routeAnalysis, filter, nil, http.StatusOK, &analysis)
+	if events.Total != 1 || events.Entries[0].Scope != "" || failures.Total != 1 || failures.Entries[0].Scope != "" ||
+		analysis.Summary.Requests != 1 || len(analysis.UsageDistribution.APIKeys) != 0 {
+		t.Fatalf("events = %+v, errors = %+v, analysis = %+v", events, failures, analysis.Summary)
+	}
+}
+
 func TestManagementWriteFailureReturnsError(t *testing.T) {
 	app, path := newAppWithPriceAndState(t, true)
 	const apiKey = "sk-storage-test-0001"

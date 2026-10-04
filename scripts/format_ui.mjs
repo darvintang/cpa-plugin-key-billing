@@ -296,6 +296,21 @@ const semanticHTML = (source) => {
   return simplify(parseHTML(source, { sourceCodeLocationInfo: true }));
 };
 
+function assertCodeEquivalent(type, before, after, label) {
+  if (type === "script") {
+    assert(isDeepStrictEqual(semanticJS(before), semanticJS(after)), `${label} AST changed`);
+    assert(
+      isDeepStrictEqual(
+        codeAST(before).comments.map((comment) => comment.value),
+        codeAST(after).comments.map((comment) => comment.value)
+      ),
+      "JavaScript comments changed"
+    );
+  } else {
+    assert(isDeepStrictEqual(semanticCSS(before), semanticCSS(after)), `${label} changed`);
+  }
+}
+
 export function assertEquivalent(before, after) {
   const beforeBlocks = codeBlocks(before),
     afterBlocks = codeBlocks(after);
@@ -304,20 +319,14 @@ export function assertEquivalent(before, after) {
     const original = beforeBlocks[index],
       formatted = afterBlocks[index];
     assert.equal(original.type, formatted.type, "Inline code block type changed");
-    if (original.type === "script") {
-      assert(isDeepStrictEqual(semanticJS(original.content), semanticJS(formatted.content)), `Script ${index} AST changed`);
-      assert(
-        isDeepStrictEqual(
-          codeAST(original.content).comments.map((comment) => comment.value),
-          codeAST(formatted.content).comments.map((comment) => comment.value)
-        ),
-        "JavaScript comments changed"
-      );
-    } else {
-      assert(isDeepStrictEqual(semanticCSS(original.content), semanticCSS(formatted.content)), `Stylesheet ${index} changed`);
-    }
+    assertCodeEquivalent(original.type, original.content, formatted.content, (original.type === "script" ? "Script " : "Stylesheet ") + index);
   }
   assert(isDeepStrictEqual(semanticHTML(before), semanticHTML(after)), "HTML changed");
+}
+
+async function formatBlock(source, type, limit) {
+  const formatted = await prettier.format(source, { ...options, printWidth: limit, parser: type === "script" ? "babel" : "css" });
+  return (type === "script" ? compactJS(formatted, limit) : compactCSS(formatted, limit)).trimEnd();
 }
 
 export async function formatUI(before) {
@@ -326,9 +335,8 @@ export async function formatUI(before) {
     const indent = block.tagIndent + "  ",
       limit = width - indent.length;
     const source = adjustIndent(block.content.replace(/^\n|\n[ \t]*$/g, ""), block.type, indent, "");
-    const formatted = await prettier.format(source, { ...options, printWidth: limit, parser: block.type === "script" ? "babel" : "css" });
-    const compact = block.type === "script" ? compactJS(formatted, limit) : compactCSS(formatted, limit);
-    const text = "\n" + adjustIndent(compact.trimEnd(), block.type, "", indent) + "\n" + block.tagIndent;
+    const compact = await formatBlock(source, block.type, limit);
+    const text = "\n" + adjustIndent(compact, block.type, "", indent) + "\n" + block.tagIndent;
     edits.push({ start: block.start, end: block.end, text });
   }
   const after = compactHTML(applyEdits(before, edits));
@@ -337,27 +345,51 @@ export async function formatUI(before) {
   return after;
 }
 
+// Standalone scripts and stylesheets use the same layout as inline blocks, starting at column 0.
+export async function formatCode(before, type) {
+  const after = (await formatBlock(before, type, width)) + "\n";
+  assertCodeEquivalent(type, before, after, type === "script" ? "Script" : "Stylesheet");
+  return after;
+}
+
+const formatters = { ".html": formatUI, ".js": (source) => formatCode(source, "script"), ".css": (source) => formatCode(source, "style") };
+const extension = (file) => file.slice(file.lastIndexOf("."));
+// The translation runtime keeps its own hand-written layout.
+const unformatted = new Set(["i18n.js"]);
+
 async function main(args) {
   const usage =
-    "Usage: node scripts/format_ui.mjs [--check] [file]\nDefault file: internal/plugin/ui.html (relative to this script, not the working directory)";
+    "Usage: node scripts/format_ui.mjs [--check] [file ...]\nDefault files: internal/plugin/web/*.{html,css,js} (relative to this script, not the working directory)";
   if (args.length === 1 && ["--help", "-h"].includes(args[0])) {
     console.log(usage);
     return;
   }
   const check = args.includes("--check"),
     paths = args.filter((arg) => arg !== "--check");
-  if (paths.length > 1 || paths.some((arg) => arg.startsWith("-"))) throw new Error(usage);
-  const file = paths[0] ?? fileURLToPath(new URL("../internal/plugin/ui.html", import.meta.url));
-  const before = fs.readFileSync(file, "utf8"),
-    after = await formatUI(before);
-  if (before === after) {
-    console.log(`${file}: already formatted`);
-  } else if (check) {
-    console.error(`${file}: formatting required; run the formatter without --check`);
-    process.exitCode = 1;
-  } else {
-    fs.writeFileSync(file, after);
-    console.log(`${file}: formatted (${before.split("\n").length - 1} → ${after.split("\n").length - 1} lines)`);
+  if (paths.some((arg) => arg.startsWith("-") || !formatters[extension(arg)])) throw new Error(usage);
+  const directory = fileURLToPath(new URL("../internal/plugin/web/", import.meta.url));
+  const files = paths.length
+    ? paths
+    : fs.readdirSync(directory).filter((name) => formatters[extension(name)] && !unformatted.has(name)).sort().map((name) => directory + name);
+  for (const file of files) {
+    const before = fs.readFileSync(file, "utf8");
+    let after;
+    try {
+      after = await formatters[extension(file)](before);
+    } catch (error) {
+      console.error(`${file}: UI formatting failed: ${error.message}`);
+      process.exitCode = 1;
+      continue;
+    }
+    if (before === after) {
+      console.log(`${file}: already formatted`);
+    } else if (check) {
+      console.error(`${file}: formatting required; run the formatter without --check`);
+      process.exitCode = 1;
+    } else {
+      fs.writeFileSync(file, after);
+      console.log(`${file}: formatted (${before.split("\n").length - 1} → ${after.split("\n").length - 1} lines)`);
+    }
   }
 }
 

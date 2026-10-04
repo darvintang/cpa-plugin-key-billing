@@ -18,8 +18,8 @@ func TestUIIncludesBothLanguagesWithoutExternalTranslationResources(t *testing.T
 			t.Fatalf("missing %q", want)
 		}
 	}
-	if bytes.Contains(uiHTML, []byte("// BILLING_I18N")) {
-		t.Fatal("unexpanded translation marker")
+	if uiInclude.Match(uiHTML) {
+		t.Fatalf("unexpanded include marker %q", uiInclude.Find(uiHTML))
 	}
 }
 

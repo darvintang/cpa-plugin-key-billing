@@ -191,7 +191,6 @@ flowchart TB
 | Model access denied | `403` | `permission_error` | `insufficient_quota` |
 | No available credential matches the routing rules | `503` | `server_error` | `internal_server_error` |
 | A bound routing rule is missing or invalid | `503` | `server_error` | `routing_configuration_error` |
-| Model has no price | `503` | `cpa_key_billing_error` | `model_price_error` |
 
 ## Copyright and license
 

@@ -347,7 +347,6 @@ func sameTaskSchedule(a, b tasksettings.Settings) bool {
 	// Concurrency and affinity edits do not reset the task deadline.
 	a.MaxConcurrency, b.MaxConcurrency = 0, 0
 	a.SessionTTLMinutes, b.SessionTTLMinutes = 0, 0
-	a.IgnoreUnpricedModels, b.IgnoreUnpricedModels = false, false
 	return a == b
 }
 

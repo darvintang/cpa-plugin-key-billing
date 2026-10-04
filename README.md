@@ -181,7 +181,6 @@ flowchart TB
 | 模型无权访问 | `403` | `permission_error` | `insufficient_quota` |
 | 没有符合规则且可用的凭证 | `503` | `server_error` | `internal_server_error` |
 | 已绑定的路由规则不存在或损坏 | `503` | `server_error` | `routing_configuration_error` |
-| 模型未定价 | `503` | `cpa_key_billing_error` | `model_price_error` |
 
 ## 版权与许可
 

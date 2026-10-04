@@ -23,15 +23,8 @@ func TestPriceAdmissionAndDeleteWithoutInventory(t *testing.T) {
 		return result
 	}
 	for _, format := range []string{"openai", "openai-response", "claude", "gemini"} {
-		result := intercept(format, "unpriced-dummy")
-		var payload struct {
-			Error struct{ Type, Code, Message string }
-		}
-		if err := json.Unmarshal(result.ResponseBody, &payload); err != nil {
-			t.Fatal(err)
-		}
-		if !result.Terminate || result.StatusCode != 503 || payload.Error.Type != "cpa_key_billing_error" || payload.Error.Code != "model_price_error" || payload.Error.Message != "Model unpriced-dummy has no configured price" {
-			t.Fatal(format, result, payload)
+		if result := intercept(format, "unpriced-dummy"); result.Terminate {
+			t.Fatal("unpriced model was blocked", format, result)
 		}
 	}
 	for _, model := range []string{"unpriced-dummy", "gpt-4o"} {
@@ -44,8 +37,8 @@ func TestPriceAdmissionAndDeleteWithoutInventory(t *testing.T) {
 			t.Fatal(price, err)
 		}
 		callOK(t, app, http.MethodDelete, routePrices, url.Values{"model_id": {model}}, nil, 200, nil)
-		if result := intercept("openai", model); result.Terminate != (model == "unpriced-dummy") {
-			t.Fatal("delete did not fall back to reference/missing", result)
+		if result := intercept("openai", model); result.Terminate {
+			t.Fatal("model was blocked after price deletion", model, result)
 		}
 	}
 	callOK(t, app, http.MethodPut, routePrices, nil, billing.CustomPrice{ModelID: "gpt-*"}, 200, nil)
@@ -103,15 +96,8 @@ func TestUsageAfterPriceDeletionKeepsTokensAndZeroCost(t *testing.T) {
 				Provider: "openai", RequestedAt: app.store.Now(), Failed: failed,
 				Detail: UsageDetail{InputTokens: 100, OutputTokens: 25, TotalTokens: 125},
 			})
-			events := requestEventEntries(t, app)
-			if len(events) != 1 {
-				t.Fatalf("usage event lost: %+v", events)
-			}
-			event := events[0]
-			if event.Failed != failed || event.PriceSource != billing.PriceSourceNone ||
-				event.Cost.TotalUSD != 0 || event.Cost.UncachedInputTokens != 100 ||
-				event.Cost.BilledOutputTokens != 25 {
-				t.Fatalf("unpriced usage was not retained at zero cost: %+v", event)
+			if events := requestEventEntries(t, app); len(events) != 0 {
+				t.Fatalf("unpriced usage was recorded: %+v", events)
 			}
 		})
 	}
@@ -228,26 +214,10 @@ func TestReferencePriceSearchAcceptsCPAModelID(t *testing.T) {
 	}
 }
 
-// An explicit pass-through policy lets unpriced models reach the upstream without creating a billable price.
-func TestUnpricedModelPolicyCanPassThrough(t *testing.T) {
+func TestUnpricedModelUsageIsNotRecorded(t *testing.T) {
 	app := newConfiguredApp(t)
-	app.controls.settings.IgnoreUnpricedModels = true
-	raw, err := app.HandleMethod(MethodRequestInterceptBefore, mustMarshal(t, RequestInterceptRequest{SourceFormat: "openai", Model: "unpriced-dummy", RequestedModel: "unpriced-dummy"}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var result RequestInterceptResponse
-	decodeResult(t, raw, &result)
-	if result.Terminate {
-		t.Fatalf("unpriced model was still blocked: %+v", result)
-	}
-	app.controls.settings.IgnoreUnpricedModels = false
-	raw, err = app.HandleMethod(MethodRequestInterceptBefore, mustMarshal(t, RequestInterceptRequest{SourceFormat: "openai", Model: "unpriced-dummy", RequestedModel: "unpriced-dummy"}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	decodeResult(t, raw, &result)
-	if !result.Terminate || result.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("default blocking policy changed: %+v", result)
+	publishUsageRecord(t, app, UsageRecord{Model: "unpriced-dummy", Alias: "unpriced-dummy", Provider: "openai", APIKey: "sk-unpriced", Detail: UsageDetail{InputTokens: 10, TotalTokens: 10}})
+	if entries := requestEventEntries(t, app); len(entries) != 0 {
+		t.Fatalf("unpriced usage was recorded: %+v", entries)
 	}
 }

@@ -10,16 +10,15 @@ import (
 
 // One policy applies to all credentials; no per-file task or concurrency overrides.
 type Settings struct {
-	SessionTTLMinutes    int    `json:"session_ttl_minutes"`
-	IgnoreUnpricedModels bool   `json:"ignore_unpriced_models"`
-	MaxConcurrency       int    `json:"max_concurrency"`
-	Enabled              bool   `json:"enabled"`
-	Mode                 string `json:"mode"`
-	IntervalMinutes      int    `json:"interval_minutes"`
-	TimeOfDay            string `json:"time_of_day"`
-	Timezone             string `json:"timezone"`
-	Model                string `json:"model"`
-	Prompt               string `json:"prompt"`
+	SessionTTLMinutes int    `json:"session_ttl_minutes"`
+	MaxConcurrency    int    `json:"max_concurrency"`
+	Enabled           bool   `json:"enabled"`
+	Mode              string `json:"mode"`
+	IntervalMinutes   int    `json:"interval_minutes"`
+	TimeOfDay         string `json:"time_of_day"`
+	Timezone          string `json:"timezone"`
+	Model             string `json:"model"`
+	Prompt            string `json:"prompt"`
 }
 
 func Default() Settings {

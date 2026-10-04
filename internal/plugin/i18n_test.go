@@ -51,7 +51,6 @@ func TestProtocolRejectionsUseEnglishWithoutUITranslationMetadata(t *testing.T) 
 			quotaExhaustedResponse(format, billing.Decision{PlanName: "Test plan"}, time.Now()),
 			modelForbiddenResponse(format, billing.RoutingDecision{Model: "test-model"}),
 			routingConfigurationResponse(format, "Routing rule no longer exists"),
-			priceRefusal(format, "model_price_error", "Model test-model has no configured price"),
 		}
 		for _, response := range responses {
 			var payload struct {

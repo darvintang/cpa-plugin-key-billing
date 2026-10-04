@@ -50,14 +50,6 @@ func (a *App) endAdmission(requestID string, admission *requestAdmission) {
 	}
 }
 
-// Enforcement runs before auth so an over-quota request never occupies an
-// upstream credential.
-func (a *App) ignoreUnpricedModels() bool {
-	a.controls.mu.Lock()
-	defer a.controls.mu.Unlock()
-	return a.controls.settings.IgnoreUnpricedModels
-}
-
 func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	var req RequestInterceptRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
@@ -90,14 +82,11 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 		}
 	}
 
-	price, model, priceErr := a.store.ResolveModelPrice(req.Model, req.RequestedModel, true)
+	_, _, priceErr := a.store.ResolveModelPrice(req.Model, req.RequestedModel, true)
 	if priceErr != nil {
 		return OKEnvelope(priceRefusal(req.SourceFormat, "price_storage_error", "Failed to load model pricing. Please try again later."))
 	}
-	// Unpriced models may pass through when accounting is explicitly disabled for them.
-	if price.Source == billing.PriceSourceNone && !a.ignoreUnpricedModels() {
-		return OKEnvelope(priceRefusal(req.SourceFormat, "model_price_error", fmt.Sprintf("Model %s has no configured price", model)))
-	}
+	// Unpriced models pass through; usage handling skips them before persistence.
 	if helper {
 		// Nested plugin helpers do not consume another client admission slot, but
 		// still need a price: usage.handle can attribute their usage to the client.
@@ -205,6 +194,11 @@ func (a *App) handleUsage(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("Parse usage record: %w", errUnmarshal)
 	}
 	if a == nil || a.store == nil || !a.store.Enabled() {
+		return OKEnvelope(struct{}{})
+	}
+	if price, _, priceErr := a.store.ResolveModelPrice(record.Model, record.Alias, false); priceErr == nil && price.Source == billing.PriceSourceNone {
+		// Keep credential affinity observations while excluding unpriced traffic from billing history.
+		a.observeCredentialUsage(record.AuthIndex, record.AuthType, record.Source, billing.CallerScope(record.APIKey))
 		return OKEnvelope(struct{}{})
 	}
 	scope := billing.CallerScope(record.APIKey)

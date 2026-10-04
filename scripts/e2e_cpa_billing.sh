@@ -1081,8 +1081,8 @@ assert_quota_exhausted() {
 assert_headless_price_admission() {
   local port="$1" runtime_dir="$2" client header_line body endpoint http_status
   local -a headers
-  # This registered test model has no custom or models.dev reference price. No panel, model
-  # price setup or key synchronization has happened yet.
+  # This registered test model has no custom or models.dev reference price and must pass through
+  # without creating a billing record.
   for client in chat responses anthropic gemini; do
     headers=()
     while IFS= read -r header_line; do
@@ -1093,15 +1093,12 @@ assert_headless_price_admission() {
     http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" \
       --output "$runtime_dir/unpriced-$client.json" --write-out '%{http_code}' \
       "http://127.0.0.1:$port$endpoint")"
-    if [[ "$http_status" != "503" ]] || ! jq -e '
-      .error.type == "cpa_key_billing_error" and .error.code == "model_price_error" and
-      .error.message == "Model e2e-chat-to-chat-nonstream has no configured price"
-    ' "$runtime_dir/unpriced-$client.json" >/dev/null; then
-      echo "未访问前端时的 ${client} 定价拦截失败，HTTP ${http_status}。" >&2
+    if [[ "$http_status" -lt 200 || "$http_status" -ge 300 ]]; then
+      echo "未定价模型未能放行 ${client}，HTTP ${http_status}。" >&2
       return 1
     fi
   done
-  log_step "未访问前端：4 种协议均拒绝未定价模型"
+  log_step "未访问前端：4 种协议均放行未定价模型"
 }
 
 assert_reference_price_billing() {

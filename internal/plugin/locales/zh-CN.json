@@ -1,7 +1,4 @@
 {
-  "ui.credential_ignore_unpriced_hint": "开启后，未配置价格的模型会继续请求上游且不计费；已配置价格的模型仍按正常规则处理",
-  "ui.credential_ignore_unpriced": "允许未配置价格的模型通过",
-  "ui.credential_price_policy": "未配置价格模型策略",
   "ui.api_key_billing": "Codex 认证管理",
   "ui.choose_an_access_method": "选择访问方式",
   "ui.switch_theme": "切换主题",

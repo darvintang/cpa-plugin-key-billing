@@ -2376,11 +2376,6 @@
               <p class="muted small" data-i18n="ui.credential_global_limit_hint">Applies to every credential. Use 0 (unlimited) or at least 4. Ordinary requests may use limit minus 2; established sticky sessions may use the two reserved slots, within the total limit. The plugin maintains its own cache and refreshes TTL on admission. CPA restart clears bindings; unavailable credentials are replaced.</p>
               </div>
               <div class="card">
-              <h2 data-i18n="ui.credential_price_policy">Model price policy</h2>
-              <label class="toggle-filter credential-task-toggle"><input id="credential-ignore-unpriced" type="checkbox" role="switch" /><span data-i18n="ui.credential_ignore_unpriced">Allow models without configured prices</span></label>
-              <p class="muted small" data-i18n="ui.credential_ignore_unpriced_hint">When enabled, unpriced models pass through without billing; configured prices are still billed normally</p>
-              </div>
-              <div class="card">
               <h2 data-i18n="ui.credential_test_tasks">Conditional tasks</h2>
               <label class="toggle-filter credential-task-toggle"><input id="credential-task-enabled" type="checkbox" role="switch" /><span data-i18n="ui.credential_test_enabled">Send scheduled Codex test requests</span></label>
               <div class="plan-details">
@@ -9443,7 +9438,6 @@
         $("credential-max-concurrency").value = cfg.max_concurrency;
         $("credential-max-concurrency").setCustomValidity("");
         $("credential-session-ttl").value = cfg.session_ttl_minutes ?? 5;
-        $("credential-ignore-unpriced").checked = cfg.ignore_unpriced_models === true;
         $("credential-task-enabled").checked = cfg.enabled;
         $("credential-task-mode").value = cfg.mode;
         $("credential-task-interval").value = cfg.interval_minutes;
@@ -9473,7 +9467,6 @@
           const cfg = {
             max_concurrency: Number($("credential-max-concurrency").value),
             session_ttl_minutes: Number($("credential-session-ttl").value),
-            ignore_unpriced_models: $("credential-ignore-unpriced").checked,
             enabled: $("credential-task-enabled").checked,
             mode: $("credential-task-mode").value,
             interval_minutes: Number($("credential-task-interval").value),

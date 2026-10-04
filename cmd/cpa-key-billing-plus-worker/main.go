@@ -66,8 +66,7 @@ func main() {
 			cfg := response.Settings
 			schedule := cfg
 			schedule.MaxConcurrency = 0
-			schedule.SessionTTLMinutes = 0        // Affinity edits do not change the timer.
-			schedule.IgnoreUnpricedModels = false // Price policy edits do not change the timer.
+			schedule.SessionTTLMinutes = 0 // Affinity edits do not change the timer.
 			if schedule != previous {
 				initial := previous.Mode == ""
 				previous = schedule
